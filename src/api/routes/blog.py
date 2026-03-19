@@ -20,13 +20,14 @@ from src.schemas.models import (
     ArticleCreate,
     ArticleUpdate,
     ArticleResponse,
+    PaginatedArticleListResponse,
 )
 from src.api.auth import verify_api_key
 from src.agents.graph import get_blog_generation_graph
 from src.config.settings import GCS_CMS_IMAGE_PREFIX
 from src.db.service import (
     save_blog_post,
-    list_blog_posts,
+    list_blog_post_summaries,
     get_blog_post,
     create_blog_post,
     update_blog_post,
@@ -348,18 +349,29 @@ async def generate_blog_simple(
 
 @router.get(
     "/articles",
-    response_model=list[ArticleResponse],
+    response_model=PaginatedArticleListResponse,
     summary="List articles",
-    description="Return all articles ordered by newest first",
+    description="Return a paginated list of article summaries ordered by newest first",
 )
 async def get_articles(
     category: str | None = Query(
         default=None,
         description="Optional category filter. Matches the article category exactly.",
     ),
+    page: int = Query(default=1, ge=1, description="Page number, starting from 1"),
+    page_limit: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum number of articles returned per page",
+    ),
 ):
-    """List persisted articles, optionally filtered by category."""
-    return list_blog_posts(category=category)
+    """List paginated article summaries, optionally filtered by category."""
+    return list_blog_post_summaries(
+        page=page,
+        page_limit=page_limit,
+        category=category,
+    )
 
 
 @router.get(

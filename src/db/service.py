@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from math import ceil
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select
@@ -60,6 +61,82 @@ def list_blog_posts(category: Optional[str] = None) -> List[BlogPost]:
         if normalized_category:
             stmt = stmt.where(BlogPost.category == normalized_category)
         return list(session.execute(stmt).scalars().all())
+    finally:
+        session.close()
+
+
+def list_blog_post_summaries(
+    *,
+    page: int = 1,
+    page_limit: int = 20,
+    category: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return a paginated list of article summaries."""
+    session_local = get_session_local()
+    if session_local is None:
+        logger.warning("DATABASE_URL is not configured. Skipping blog listing.")
+        return {
+            "page": page,
+            "page_limit": page_limit,
+            "total_count": 0,
+            "total_pages": 0,
+            "articles": [],
+        }
+
+    session = session_local()
+    try:
+        normalized_category = (category or "").strip()
+
+        count_stmt = select(func.count()).select_from(BlogPost)
+        items_stmt = (
+            select(
+                BlogPost.slug,
+                BlogPost.title,
+                BlogPost.description,
+                BlogPost.tags,
+                BlogPost.created_at,
+                BlogPost.final_score,
+                BlogPost.cover_image,
+                BlogPost.author_name,
+                BlogPost.author_avatar,
+                BlogPost.category,
+            )
+            .order_by(BlogPost.created_at.desc(), BlogPost.id.desc())
+            .offset((page - 1) * page_limit)
+            .limit(page_limit)
+        )
+
+        if normalized_category:
+            count_stmt = count_stmt.where(BlogPost.category == normalized_category)
+            items_stmt = items_stmt.where(BlogPost.category == normalized_category)
+
+        total_count = int(session.execute(count_stmt).scalar_one() or 0)
+        total_pages = ceil(total_count / page_limit) if total_count > 0 else 0
+
+        rows = session.execute(items_stmt).all()
+        articles = [
+            {
+                "slug": row.slug,
+                "title": row.title,
+                "description": row.description,
+                "tags": row.tags or [],
+                "created_at": row.created_at,
+                "final_score": row.final_score,
+                "cover_image": row.cover_image,
+                "author_name": row.author_name,
+                "author_avatar": row.author_avatar,
+                "category": row.category,
+            }
+            for row in rows
+        ]
+
+        return {
+            "page": page,
+            "page_limit": page_limit,
+            "total_count": total_count,
+            "total_pages": total_pages,
+            "articles": articles,
+        }
     finally:
         session.close()
 

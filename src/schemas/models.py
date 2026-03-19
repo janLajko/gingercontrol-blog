@@ -299,6 +299,31 @@ class ArticleResponse(ArticleBase):
     keyword: Optional[str] = Field(default=None)
     created_at: datetime = Field(..., description="Created timestamp")
     updated_at: datetime = Field(..., description="Updated timestamp")
+
+
+class ArticleListItemResponse(BaseModel):
+    """Minimal article summary payload for paginated listings."""
+
+    slug: str = Field(..., description="Article slug")
+    title: str = Field(..., description="Article title")
+    description: str = Field(..., description="Article description")
+    tags: List[str] = Field(default_factory=list, description="Article tags")
+    created_at: datetime = Field(..., description="Created timestamp")
+    final_score: Optional[float] = Field(default=0.0, description="Final quality/SEO score")
+    cover_image: Optional[str] = Field(default=None, description="Cover image URL")
+    author_name: Optional[str] = Field(default=None, description="Author display name")
+    author_avatar: Optional[str] = Field(default=None, description="Author avatar URL")
+    category: Optional[str] = Field(default=None, description="Article category")
+
+
+class PaginatedArticleListResponse(BaseModel):
+    """Paginated article list response."""
+
+    page: int = Field(..., ge=1)
+    page_limit: int = Field(..., ge=1)
+    total_count: int = Field(..., ge=0)
+    total_pages: int = Field(..., ge=0)
+    articles: List[ArticleListItemResponse] = Field(default_factory=list)
     
 class EnhancedBlogGenerationResponse(BaseModel):
     """Enhanced response schema with detailed information."""
