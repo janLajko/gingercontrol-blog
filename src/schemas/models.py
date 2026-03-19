@@ -304,6 +304,7 @@ class ArticleResponse(ArticleBase):
 class ArticleListItemResponse(BaseModel):
     """Minimal article summary payload for paginated listings."""
 
+    id: int = Field(..., description="Article ID")
     slug: str = Field(..., description="Article slug")
     title: str = Field(..., description="Article title")
     description: str = Field(..., description="Article description")

@@ -90,6 +90,7 @@ def list_blog_post_summaries(
         count_stmt = select(func.count()).select_from(BlogPost)
         items_stmt = (
             select(
+                BlogPost.id,
                 BlogPost.slug,
                 BlogPost.title,
                 BlogPost.description,
@@ -116,6 +117,7 @@ def list_blog_post_summaries(
         rows = session.execute(items_stmt).all()
         articles = [
             {
+                "id": row.id,
                 "slug": row.slug,
                 "title": row.title,
                 "description": row.description,
