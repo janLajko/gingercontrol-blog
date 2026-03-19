@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.db.base import Base, get_engine, get_session_local
 from src.db.models import BlogPost, Category
@@ -46,7 +46,7 @@ def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:
         session.close()
 
 
-def list_blog_posts() -> List[BlogPost]:
+def list_blog_posts(category: Optional[str] = None) -> List[BlogPost]:
     """Return all blog posts ordered by newest first."""
     session_local = get_session_local()
     if session_local is None:
@@ -56,6 +56,9 @@ def list_blog_posts() -> List[BlogPost]:
     session = session_local()
     try:
         stmt = select(BlogPost).order_by(BlogPost.created_at.desc(), BlogPost.id.desc())
+        normalized_category = (category or "").strip()
+        if normalized_category:
+            stmt = stmt.where(BlogPost.category == normalized_category)
         return list(session.execute(stmt).scalars().all())
     finally:
         session.close()
@@ -145,8 +148,19 @@ def delete_blog_post(post_id: int) -> bool:
         session.close()
 
 
-def list_categories() -> List[Category]:
-    """Return all categories ordered by name."""
+def _serialize_category_with_count(category: Category, article_count: int) -> Dict[str, Any]:
+    """Convert a category row plus article count into a response payload."""
+    return {
+        "id": category.id,
+        "name": category.name,
+        "article_count": int(article_count or 0),
+        "created_at": category.created_at,
+        "updated_at": category.updated_at,
+    }
+
+
+def list_categories() -> List[Dict[str, Any]]:
+    """Return all categories ordered by name with article counts."""
     session_local = get_session_local()
     if session_local is None:
         logger.warning("DATABASE_URL is not configured. Skipping category listing.")
@@ -154,14 +168,23 @@ def list_categories() -> List[Category]:
 
     session = session_local()
     try:
-        stmt = select(Category).order_by(Category.name.asc())
-        return list(session.execute(stmt).scalars().all())
+        stmt = (
+            select(Category, func.count(BlogPost.id))
+            .outerjoin(BlogPost, BlogPost.category == Category.name)
+            .group_by(Category.id)
+            .order_by(Category.name.asc())
+        )
+        rows = session.execute(stmt).all()
+        return [
+            _serialize_category_with_count(category, article_count)
+            for category, article_count in rows
+        ]
     finally:
         session.close()
 
 
-def get_category_by_id(category_id: int) -> Optional[Category]:
-    """Return one category by primary key."""
+def get_category_by_id(category_id: int) -> Optional[Dict[str, Any]]:
+    """Return one category by primary key with article count."""
     session_local = get_session_local()
     if session_local is None:
         logger.warning("DATABASE_URL is not configured. Skipping category lookup.")
@@ -169,7 +192,17 @@ def get_category_by_id(category_id: int) -> Optional[Category]:
 
     session = session_local()
     try:
-        return session.get(Category, category_id)
+        stmt = (
+            select(Category, func.count(BlogPost.id))
+            .outerjoin(BlogPost, BlogPost.category == Category.name)
+            .where(Category.id == category_id)
+            .group_by(Category.id)
+        )
+        row = session.execute(stmt).one_or_none()
+        if row is None:
+            return None
+        category, article_count = row
+        return _serialize_category_with_count(category, article_count)
     finally:
         session.close()
 

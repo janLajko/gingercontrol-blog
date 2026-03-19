@@ -3,7 +3,7 @@
 import uuid
 import time
 from typing import Dict, Any
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, File, UploadFile
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, File, UploadFile, Query
 from fastapi.responses import JSONResponse
 
 from src.schemas.models import (
@@ -352,9 +352,14 @@ async def generate_blog_simple(
     summary="List articles",
     description="Return all articles ordered by newest first",
 )
-async def get_articles():
-    """List all persisted articles."""
-    return list_blog_posts()
+async def get_articles(
+    category: str | None = Query(
+        default=None,
+        description="Optional category filter. Matches the article category exactly.",
+    ),
+):
+    """List persisted articles, optionally filtered by category."""
+    return list_blog_posts(category=category)
 
 
 @router.get(
@@ -505,7 +510,14 @@ async def get_category(category_id: int):
 async def create_category_endpoint(payload: CategoryCreate):
     """Create a category."""
     try:
-        return create_category(payload.name)
+        category = create_category(payload.name)
+        return {
+            "id": category.id,
+            "name": category.name,
+            "article_count": 0,
+            "created_at": category.created_at,
+            "updated_at": category.updated_at,
+        }
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -529,7 +541,13 @@ async def update_category_endpoint(category_id: int, payload: CategoryUpdate):
 
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found")
-    return category
+    return {
+        "id": category.id,
+        "name": category.name,
+        "article_count": 0,
+        "created_at": category.created_at,
+        "updated_at": category.updated_at,
+    }
 
 
 @router.delete(

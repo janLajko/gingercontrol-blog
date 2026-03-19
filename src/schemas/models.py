@@ -236,6 +236,7 @@ class CategoryResponse(CategoryBase):
     """Category response payload."""
 
     id: int = Field(..., description="Category ID")
+    article_count: int = Field(default=0, description="Number of articles in this category")
     created_at: datetime = Field(..., description="Created timestamp")
     updated_at: datetime = Field(..., description="Updated timestamp")
 
