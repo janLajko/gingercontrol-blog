@@ -2,7 +2,7 @@
 
 import uuid
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, File, UploadFile, Query
 from fastapi.responses import JSONResponse
 
@@ -27,6 +27,7 @@ from src.agents.graph import get_blog_generation_graph
 from src.config.settings import GCS_CMS_IMAGE_PREFIX
 from src.db.service import (
     save_blog_post,
+    list_blog_posts,
     list_blog_post_summaries,
     get_blog_post,
     create_blog_post,
@@ -349,27 +350,34 @@ async def generate_blog_simple(
 
 @router.get(
     "/articles",
-    response_model=PaginatedArticleListResponse,
+    response_model=List[ArticleResponse] | PaginatedArticleListResponse,
     summary="List articles",
-    description="Return a paginated list of article summaries ordered by newest first",
+    description="Return the legacy full article array by default, or a paginated summary when page/page_limit is provided",
 )
 async def get_articles(
     category: str | None = Query(
         default=None,
         description="Optional category filter. Matches the article category exactly.",
     ),
-    page: int = Query(default=1, ge=1, description="Page number, starting from 1"),
-    page_limit: int = Query(
-        default=20,
+    page: int | None = Query(
+        default=None,
+        ge=1,
+        description="Optional page number, starting from 1. When omitted with page_limit, the legacy full-array response is returned.",
+    ),
+    page_limit: int | None = Query(
+        default=None,
         ge=1,
         le=100,
-        description="Maximum number of articles returned per page",
+        description="Optional page size. When omitted with page, the legacy full-array response is returned.",
     ),
 ):
-    """List paginated article summaries, optionally filtered by category."""
+    """List articles in legacy or paginated mode, optionally filtered by category."""
+    if page is None and page_limit is None:
+        return list_blog_posts(category=category)
+
     return list_blog_post_summaries(
-        page=page,
-        page_limit=page_limit,
+        page=page or 1,
+        page_limit=page_limit or 20,
         category=category,
     )
 
