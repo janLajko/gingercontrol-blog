@@ -47,7 +47,10 @@ def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:
         session.close()
 
 
-def list_blog_posts(category: Optional[str] = None) -> List[BlogPost]:
+def list_blog_posts(
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+) -> List[BlogPost]:
     """Return all blog posts ordered by newest first."""
     session_local = get_session_local()
     if session_local is None:
@@ -58,8 +61,11 @@ def list_blog_posts(category: Optional[str] = None) -> List[BlogPost]:
     try:
         stmt = select(BlogPost).order_by(BlogPost.created_at.desc(), BlogPost.id.desc())
         normalized_category = (category or "").strip()
+        normalized_status = (status or "").strip()
         if normalized_category:
             stmt = stmt.where(BlogPost.category == normalized_category)
+        if normalized_status:
+            stmt = stmt.where(BlogPost.status == normalized_status)
         return list(session.execute(stmt).scalars().all())
     finally:
         session.close()
@@ -70,6 +76,7 @@ def list_blog_post_summaries(
     page: int = 1,
     page_limit: int = 20,
     category: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return a paginated list of article summaries."""
     session_local = get_session_local()
@@ -86,6 +93,7 @@ def list_blog_post_summaries(
     session = session_local()
     try:
         normalized_category = (category or "").strip()
+        normalized_status = (status or "").strip()
 
         count_stmt = select(func.count()).select_from(BlogPost)
         items_stmt = (
@@ -110,6 +118,9 @@ def list_blog_post_summaries(
         if normalized_category:
             count_stmt = count_stmt.where(BlogPost.category == normalized_category)
             items_stmt = items_stmt.where(BlogPost.category == normalized_category)
+        if normalized_status:
+            count_stmt = count_stmt.where(BlogPost.status == normalized_status)
+            items_stmt = items_stmt.where(BlogPost.status == normalized_status)
 
         total_count = int(session.execute(count_stmt).scalar_one() or 0)
         total_pages = ceil(total_count / page_limit) if total_count > 0 else 0

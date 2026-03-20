@@ -359,6 +359,10 @@ async def get_articles(
         default=None,
         description="Optional category filter. Matches the article category exactly.",
     ),
+    status: str | None = Query(
+        default=None,
+        description="Optional status filter. Matches the article status exactly.",
+    ),
     page: int | None = Query(
         default=None,
         ge=1,
@@ -373,12 +377,13 @@ async def get_articles(
 ):
     """List articles in legacy or paginated mode, optionally filtered by category."""
     if page is None and page_limit is None:
-        return list_blog_posts(category=category)
+        return list_blog_posts(category=category, status=status)
 
     return list_blog_post_summaries(
         page=page or 1,
         page_limit=page_limit or 20,
         category=category,
+        status=status,
     )
 
 
