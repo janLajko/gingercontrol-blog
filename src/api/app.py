@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
-import uvloop
 import asyncio
 from dotenv import load_dotenv
 
@@ -36,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Set uvloop as the event loop policy for better performance
     if os.name != "nt":  # Not Windows
         try:
+            import uvloop
             asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
             logger.info("uvloop event loop policy set")
         except ImportError:

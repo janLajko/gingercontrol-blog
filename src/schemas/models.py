@@ -105,7 +105,7 @@ class EnhancedBlogGenerationRequest(BaseModel):
     )
 
     author_name: Optional[str] = Field(
-        default=None,
+        default="Chen Cui",
         alias="authorName",
         max_length=120,
         description="Author display name"

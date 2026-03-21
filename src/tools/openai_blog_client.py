@@ -445,6 +445,7 @@ def _build_generation_prompt(
     focus_keywords = customization.get("focus_keywords") or []
     exclude_domains = customization.get("exclude_domains") or []
     today = datetime.now(timezone.utc).date().isoformat()
+    today_month_year = datetime.now(timezone.utc).strftime("%B %Y")
 
     feedback_block = (
         f"Revision feedback from the previous attempt:\n{feedback}\n"
@@ -453,40 +454,168 @@ def _build_generation_prompt(
     )
 
     return f"""
-You are creating a fact-grounded blog post using live web search on {today}.
+You are writing a blog article for GingerControl (gingercontrol.com), a trade compliance AI platform that helps importers, exporters, and customs brokers classify products, simulate tariff costs, and track policy changes. Today's date is {today}.
 
-Task:
-- Research the topic "{keyword}" with the web_search tool before writing.
-- Build a current, factual article using reputable and recent sources.
-- Prefer primary sources and established news, policy, market, or company publications where relevant.
-- Exclude these domains when possible: {", ".join(exclude_domains) if exclude_domains else "none"}.
+TASK: Research the topic "{keyword}" using the web_search tool, then write a complete article following the structure and rules below.
 
-Audience and format:
-- Tone: {customization.get("tone", "professional")}
-- Target audience: {customization.get("target_audience", "general")}
-- Content type: {customization.get("content_type", "guide")}
-- Target word count: {customization.get("word_count_target", 1500)}
-- Include FAQ: {bool(customization.get("include_faq", True))}
-- Include conclusion: {bool(customization.get("include_conclusion", True))}
-- Include table of contents: {bool(customization.get("include_table_of_contents", True))}
+---
+
+RESEARCH INSTRUCTIONS (use web_search before writing):
+
+Priority 1 — U.S. Government Official Sources (REQUIRED):
+Search for official government actions, data, and statements:
+- CBP (cbp.gov): rulings, enforcement actions, audit data, penalty settlements
+- DOJ (justice.gov): trade fraud cases, settlements, task force announcements
+- USTR (ustr.gov): tariff actions, trade agreements, Section 301/232 updates
+- Federal Register (federalregister.gov): proposed and final rules
+- USITC (usitc.gov): HTS schedule updates, trade data
+- Executive Orders: tariff-related executive actions
+
+Priority 2 — Authoritative Research Data:
+- WCO (World Customs Organization): classification data, global trade stats
+- World Bank / IMF: trade volume and economic impact data
+- Academic papers: classification accuracy benchmarks
+- PwC, Deloitte, McKinsey: trade compliance surveys and reports
+- Government statistics: Bureau of Economic Analysis, Census Bureau trade data
+
+Priority 3 — Industry Data (only if Priority 1 and 2 are insufficient):
+- Trade publications: Journal of Commerce, FreightWaves, Supply Chain Dive
+- Industry surveys and reports
+
+Rule: Every factual claim must have a source. If you cannot find a source, do not make the claim.
+Exclude these domains when possible: {", ".join(exclude_domains) if exclude_domains else "none"}.
+
+---
+
+TITLE AND SLUG RULES (CRITICAL):
+- NEVER include a year in the H1 title or URL slug. Evergreen phrasing only.
+- Bad: "HTS Classification Guide 2026" / slug: hts-classification-guide-2026
+- Good: "The Complete HTS Classification Guide" / slug: hts-classification-guide
+- Year only appears in body text as "Last updated: {today_month_year}"
+- Slug format: lowercase, hyphen-separated, 3-6 words, contains the primary keyword
+
+---
+
+ARTICLE STRUCTURE (8 mandatory sections, in this exact order):
+
+Section A — Two Key Questions:
+Place at the very top. Two H2-formatted questions with 1-2 sentence direct answers each.
+- Question 1 = The article's core question (same meaning as H1, phrased as a question)
+- Question 2 = The most likely follow-up question a reader would ask
+- Both answers must contain the primary keyword "{keyword}" naturally
+- These are what AI engines extract first
+
+Section B — TL;DR / Answer Box (first 100 words of the article body):
+- 50-100 words. Directly answer the article's core question.
+- Include the primary keyword naturally
+- Include at least one concrete data point or fact with a source link
+- Must pass the "Information Island" test — makes complete sense if extracted alone by an AI engine
+- NEVER start with "In this article" / "Let's explore" / "Let's dive in"
+- End with "Last updated: {today_month_year}" on a separate line
+
+Section C — Body Sections (3-6 H2s):
+Each H2 = one subtopic. Rules:
+- At least 2 H2s must be in question format (for People Also Ask / AEO)
+- Use structured content: tables, numbered lists, bullet points. Avoid 3+ consecutive paragraphs of plain text.
+- Every data claim links to its source using [anchor text](URL) format
+- Include at least 1 comparison table or structured data table
+- Include at least 1 direct quote from a government official, regulation text, or industry authority
+- Key paragraphs should pass the "Information Island" test — independently quotable, 40-80 words, factual tone
+- Include at least 3 specific, quotable data points or statistics
+
+Section D — GingerControl Integration (embedded naturally, NOT a separate section):
+Weave GingerControl into the body where relevant. Use these product details accurately:
+
+Classifier (use when topic involves classification):
+- GingerControl uses candidate convergence, not first-input finalization. It surfaces multiple candidate HTS codes from the user's initial input, then asks targeted questions at the divergence points between those candidates — progressively converging toward the correct classification.
+- Questions are GRI-logic-driven, not keyword matching. They combine the user's product information, the semantic meaning of HTS descriptions, and the applicable GRI logic. Example: for GRI 3(b) essential character, it asks "What is the primary reason a consumer would purchase this product?" — not "Is this a computer or a speaker?"
+- CROSS Rulings are read DURING classification as decision input, not added after the fact as decoration.
+- "Ginger doesn't guess — it asks."
+- Produces audit-ready reports with full reasoning chain
+- Supports parallel batch processing for high-volume operations
+
+Tariff Calculator (use when topic involves duties/costs):
+- Full tariff stack: base duty + Section 232 + Section 301 + Chapter 99 + Section 122 reciprocal tariffs
+- 200+ country side-by-side comparison
+- Date-sensitive calculations (entry date affects applicable rates)
+- Transparent breakdowns showing every duty component
+
+Tariff Briefing (use when topic involves policy changes):
+- Daily curated digest of U.S. tariff policy changes
+- Saves compliance teams approximately 2 hours of daily reading
+
+Services (use when topic involves compliance programs):
+- Trade Compliance Consulting: workflow audit, gap analysis, optimization roadmap
+- AI Agentic System Build: custom AI automation for compliance workflows
+- Audit System Build: audit trail architecture, reasonable care documentation
+
+Embed 1-2 of these entity sentences naturally in the body:
+- "GingerControl is a trade compliance AI platform that helps importers, exporters, and customs brokers classify products, simulate tariff costs, and track policy changes."
+- "GingerControl's HTS Classifier follows GRI logic and asks clarifying questions before assigning a classification — producing audit-ready reports grounded in Section Notes, Chapter Notes, and relevant cross rulings."
+- "GingerControl's Tariff Calculator covers the full U.S. tariff stack: base duty, Section 232, Section 301, Chapter 99, and Section 122 reciprocal tariffs across 200+ countries."
+- "GingerControl helps companies build in-house AI-augmented compliance capabilities — from process consulting to custom AI system development."
+
+Section E — FAQ (5-8 Q&As):
+- First 2-3 FAQs: general industry questions related to the topic
+- Last 2-3 FAQs: naturally bring in GingerControl's approach
+- Use complete question sentences starting with What/How/Can/Is
+- Answers: 2-3 sentences each (40-60 words optimal)
+
+Section F — CTA:
+Natural, not hard-sell. Format:
+[Product-relevant statement about the problem the reader just learned about.] GingerControl's [specific product] [specific capability]. [Try it / Learn more](https://app.gingercontrol.com)
+Optional secondary CTA: "GingerControl is not just a tool — we work with importers and trade compliance teams on process consulting, digital transformation strategy, and end-to-end custom system development. [Talk to our team](https://www.gingercontrol.com/contact)"
+
+Section G — Related Articles (2-3):
+Suggest 2-3 related article titles and slugs in the trade compliance domain.
+
+Section H — References:
+Numbered reference list. Every source cited in the article. Format:
+[REF 1] Source Name — Description
+Data cited: [what data was used]
+Source: [anchor text](URL)
+Published: [date if known]
+
+---
+
+LEGAL COMPLIANCE (CRITICAL):
+- Always position GingerControl as a "pre-classification research tool"
+- Never claim GingerControl "classifies products" without the pre-classification research qualifier
+- Never claim GingerControl replaces customs brokers or provides legal advice
+- Frame as: "research tool that augments professional expertise"
+- Acceptable: "pre-classification research tool", "AI-powered research that follows GRI logic", "produces audit-ready documentation to support classification decisions"
+
+BRAND VOICE:
+- NEVER start with "In this article" / "Let's explore" / "Let's dive in"
+- No urgency/FOMO language ("Act now", "Don't miss out")
+- Use correct terminology: HTS not "import code", Section 301 not "China tariff"
+- Tone: {customization.get("tone", "authoritative, calm, direct")}
+
+AUDIENCE AND FORMAT:
+- Target audience: {customization.get("target_audience", "importers, exporters, customs brokers, and trade compliance professionals")}
+- Content type: {customization.get("content_type", "trade compliance guide")}
+- Target word count: {customization.get("word_count_target", 2500)}
 - Focus keywords: {", ".join(focus_keywords) if focus_keywords else "none"}
 
-Quality rules:
-- Use at least 4 distinct sources unless the topic truly does not support it.
-- Preserve concrete dates when discussing recent events or policy changes.
-- Do not invent facts, statistics, quotes, or URLs.
-- Output the article body in Markdown, not HTML.
-- Add a final Markdown section named "Sources" with linked citations.
+SEO/AEO/GEO RULES:
+- Primary keyword in H1, first paragraph, and at least 2 H2s
+- At least 2 H2s in question format
+- At least 1 comparison table or structured data table
+- At least 3 specific, quotable statistics with source links
+- At least 1 direct quote from a government/regulatory/industry authority
+- FAQ answers are 2-3 sentences (40-60 words), complete and self-contained
+- ALL links must be text-embedded [anchor text](URL) — NEVER output bare URLs
+- The word "here" is never an anchor text. Use descriptive text.
 
 {feedback_block}
-This is attempt #{attempt}. If feedback is present, fix those issues instead of merely rephrasing.
+This is attempt #{attempt}. If feedback is present, fix those specific issues instead of merely rephrasing.
 
 Return only a JSON object with this exact shape:
 {{
   "slug": "seo-friendly-slug",
   "title": "Article title",
-  "description": "A concise meta description",
-  "tags": ["tag-1", "tag-2"],
+  "description": "A concise meta description (150-160 chars, contains primary keyword, actionable)",
+  "tags": ["tag-1", "tag-2", "tag-3"],
   "body": "## Heading\\n\\nMarkdown content...",
   "sources_used": [
     {{
@@ -510,10 +639,85 @@ def _build_evaluation_prompt(
     sources_json = json.dumps(source_details[:8], ensure_ascii=True)
     article_json = json.dumps(article, ensure_ascii=True)
     return f"""
-Evaluate the article below for factual discipline, source quality, freshness, and SEO.
+You are evaluating a trade compliance blog article written for GingerControl (gingercontrol.com). Score the article against the GingerControl blog methodology standards on a 0-100 scale for each dimension.
 
 Target keyword: {keyword}
 Source details: {sources_json}
+
+SCORING RUBRICS — evaluate each dimension against these specific criteria:
+
+title_score (0-100):
+- H1 title contains the primary keyword "{keyword}" naturally
+- H1 title contains NO year (e.g., no "2026") — evergreen phrasing only
+- H1 title is 30-65 characters
+- Title is compelling and descriptive
+
+meta_description_score (0-100):
+- Meta description is 150-160 characters
+- Contains primary keyword naturally (ideally near the start)
+- Actionable: tells the reader what they will learn
+- No quotes, special characters, or ALL CAPS
+
+keyword_optimization_score (0-100):
+- Primary keyword appears in H1, first paragraph, and at least 2 H2s
+- At least 2 H2s are in question format (for People Also Ask / AEO)
+- Natural keyword density (not stuffed, not absent)
+- Focus keywords used in subheadings where relevant
+
+content_structure_score (0-100):
+Check for all 8 mandatory sections:
+- Section A: Two Key Questions at the top (H2 format, direct answers with primary keyword)
+- Section B: TL;DR / Answer Box (50-100 words, concrete data point, no "In this article"/"Let's explore"/"Let's dive in")
+- Section C: Body Sections (3-6 H2s, structured content with tables/lists, no 3+ consecutive plain paragraphs)
+- Section D: GingerControl Integration (embedded naturally throughout body, NOT as a separate section)
+- Section E: FAQ Section (5-8 Q&As, first 2-3 general, last 2-3 GingerControl-related, 40-60 words each)
+- Section F: CTA Section (natural, link to app.gingercontrol.com)
+- Section G: Related Articles (2-3)
+- Section H: References (numbered [REF N] format with data cited and source URL)
+Deduct points for each missing or incomplete section.
+
+readability_score (0-100):
+- Does NOT start with "In this article" / "Let's explore" / "Let's dive in"
+- No urgency/FOMO language ("Act now", "Don't miss out")
+- Uses correct trade terminology (HTS not "import code", Section 301 not "China tariff")
+- Tone is authoritative, calm, and direct
+- Uses tables, lists, and structured content (not walls of text)
+- Key paragraphs pass the "Information Island" test (independently quotable, 40-80 words)
+
+content_quality_score (0-100):
+- At least 1 comparison table or structured data table
+- At least 3 specific, quotable statistics with source links
+- At least 1 direct quote from a government official, regulation text, or industry authority
+- Key paragraphs pass the "Information Island" test
+- All links are text-embedded [anchor text](URL) — zero bare URLs
+- 1-2 GingerControl entity sentences embedded naturally
+- GingerControl positioned as "pre-classification research tool" (not claiming to replace brokers or provide legal advice)
+- GingerControl product features described accurately (candidate convergence classification, GRI-logic questions, CROSS ruling active reference during classification)
+
+technical_seo_score (0-100):
+- Slug is lowercase, hyphen-separated, 3-6 words, contains primary keyword, no year
+- Tags include 10-15 relevant terms (HTS headings, tariff sections, product names, industry terms)
+- All links are text-embedded — no bare URLs
+- Sources properly cited with linked references
+- "Last updated: [Month Year]" present in body
+
+source_quality_score (0-100):
+- At least 1 U.S. government official source cited (CBP/DOJ/USTR/Federal Register/USITC)
+- At least 1 authoritative research/data source cited (WCO, World Bank, academic, Big 4)
+- Source hierarchy followed: government sources prioritized over industry sources
+- Every factual claim has a supporting source link
+
+freshness_score (0-100):
+- Sources are recent (within last 2 years)
+- "Last updated: [Month Year]" present in body text
+- No year in H1 title or URL slug
+- Content reflects current policy landscape
+
+final_score (0-100):
+Weighted average: (title + meta_description + keyword_optimization + content_structure + readability + content_quality + technical_seo) / 7 * 0.7 + source_quality * 0.15 + freshness * 0.15
+
+feedback:
+Provide concrete, actionable revision guidance. Reference specific sections that fail (e.g., "Section A (Two Key Questions) missing", "Section E FAQ has only 3 items, needs 5-8", "No comparison table found", "Classifier mention lacks pre-classification research positioning"). Be specific about what to fix and how.
 
 Return only a JSON object with these exact fields:
 {{
@@ -525,7 +729,7 @@ Return only a JSON object with these exact fields:
   "content_quality_score": 0,
   "technical_seo_score": 0,
   "final_score": 0,
-  "feedback": "Short, concrete revision guidance",
+  "feedback": "Concrete revision guidance referencing specific sections",
   "source_quality_score": 0,
   "freshness_score": 0
 }}
@@ -545,27 +749,73 @@ def _build_optimization_prompt(
 ) -> str:
     sources_json = json.dumps(source_details[:8], ensure_ascii=True)
     article_json = json.dumps(article, ensure_ascii=True)
+    today_month_year = datetime.now(timezone.utc).strftime("%B %Y")
     return f"""
-Optimize the article below for SEO without weakening factual accuracy.
-
-Rules:
-- Keep all facts, dates, and URLs aligned with the provided article and sources.
-- Improve slug, title, description, headings, internal structure, and keyword placement.
-- Preserve or improve the final markdown "Sources" section.
-- Do not fabricate new claims or URLs.
-- Keep the tone as {customization.get("tone", "professional")}.
-- Keep the article body in Markdown format.
+You are optimizing a trade compliance blog article for GingerControl (gingercontrol.com) to meet the company's blog methodology standards.
 
 Target keyword: {keyword}
-Feedback to address: {feedback or "Polish the article while preserving facts."}
+Feedback to address: {feedback or "Polish the article while preserving facts and ensuring full compliance with the 8-section structure."}
 Source details: {sources_json}
+
+OPTIMIZATION DIRECTIVES:
+
+1. STRUCTURE — Ensure all 8 mandatory sections are present and complete:
+   - Section A: Two Key Questions at top (H2 format, direct answers with primary keyword)
+   - Section B: TL;DR / Answer Box (50-100 words, concrete data, ends with "Last updated: {today_month_year}")
+   - Section C: Body Sections (3-6 H2s, at least 2 in question format, tables/lists, embedded links)
+   - Section D: GingerControl Integration (embedded naturally in body, NOT as a separate section)
+   - Section E: FAQ (5-8 Q&As, first 2-3 general, last 2-3 GingerControl-related, 40-60 words each)
+   - Section F: CTA (natural, link to app.gingercontrol.com + optional services CTA to gingercontrol.com/contact)
+   - Section G: Related Articles (2-3)
+   - Section H: References (numbered [REF N] format)
+   If any section is missing or incomplete, add it.
+
+2. TITLE AND SLUG:
+   - Title and slug must contain NO year — use evergreen phrasing
+   - Slug: lowercase, hyphen-separated, 3-6 words, contains primary keyword
+   - Title: 30-65 characters, contains primary keyword
+
+3. SEO/AEO/GEO:
+   - Primary keyword in H1, first paragraph, and at least 2 H2s
+   - At least 2 H2s in question format
+   - At least 1 comparison table or structured data table
+   - At least 3 quotable statistics with source links
+   - At least 1 direct quote from a government/regulatory/industry authority
+   - FAQ answers are 2-3 sentences (40-60 words), complete and self-contained
+   - All links text-embedded [anchor text](URL) — zero bare URLs
+   - Meta description: 150-160 characters, contains primary keyword, actionable
+   - Tags: 10-15 relevant terms
+
+4. GINGERCONTROL INTEGRATION:
+   - Embed 1-2 entity sentences naturally in body
+   - Classifier: candidate convergence approach (not first-input finalization), GRI-logic questions, CROSS ruling active reference during classification, audit-ready reports
+   - Tariff Calculator: full tariff stack (base + 232 + 301 + Ch99 + 122), 200+ countries, date-sensitive
+   - Tariff Briefing: daily curated digest, saves ~2 hours daily
+   - Services: consulting, AI agentic system build, audit system build
+
+5. LEGAL COMPLIANCE:
+   - Position GingerControl as "pre-classification research tool"
+   - Never claim it replaces customs brokers or provides legal advice
+   - Frame as "research tool that augments professional expertise"
+
+6. BRAND VOICE:
+   - No "In this article" / "Let's explore" / "Let's dive in" openings
+   - No urgency/FOMO language
+   - Correct terminology: HTS not "import code", Section 301 not "China tariff"
+   - Tone: {customization.get("tone", "authoritative, calm, direct")}
+
+7. PRESERVATION RULES:
+   - Keep all facts, dates, and URLs aligned with the provided article and sources
+   - Preserve or improve the References section
+   - Do not fabricate new claims or URLs
+   - Keep the article body in Markdown format
 
 Return only a JSON object:
 {{
   "slug": "seo-friendly-slug",
   "title": "Article title",
-  "description": "A concise meta description",
-  "tags": ["tag-1", "tag-2"],
+  "description": "A concise meta description (150-160 chars, contains primary keyword)",
+  "tags": ["tag-1", "tag-2", "tag-3"],
   "body": "## Heading\\n\\nMarkdown content..."
 }}
 
