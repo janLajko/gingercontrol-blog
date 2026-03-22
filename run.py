@@ -1,7 +1,6 @@
 """Development runner script for the Gemini Blog Agent."""
 
 import asyncio
-import uvloop
 import uvicorn
 import os
 # import sys
@@ -21,6 +20,7 @@ def main():
     """Main entry point for development server."""
     # Set uvloop as event loop policy for better performance (Unix only)
     if os.name != 'nt':
+        import uvloop
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     
     # Configuration

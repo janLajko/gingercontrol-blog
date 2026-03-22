@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(python -m venv venv)",
+      "Bash(where python:*)",
+      "Bash(py --version)",
+      "Bash(py -3 --version)",
+      "Bash(py -3 -m venv venv)",
+      "Bash(python -c \"from src.tools.openai_blog_client import OpenAIBlogClient, _build_generation_prompt, _build_evaluation_prompt, _build_optimization_prompt; print\\(''All imports OK''\\)\")"
+    ]
+  }
+}
