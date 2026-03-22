@@ -1,10 +1,9 @@
 """Custom middleware for rate limiting, logging, and security."""
 
 import time
-import asyncio
-from typing import Dict, Optional
+from typing import Dict
 from collections import defaultdict, deque
-from fastapi import Request, Response, HTTPException, status
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from src.utils.logger import get_logger
 
@@ -60,48 +59,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return False
     
     async def dispatch(self, request: Request, call_next):
-        """Process request through rate limiting."""
-        # Skip rate limiting for health checks
-        if request.url.path in ["/health", "/api/v1/health", "/docs", "/redoc", "/openapi.json"]:
-            return await call_next(request)
-        
-        client_id = self._get_client_id(request)
-        
-        if self._is_rate_limited(client_id):
-            logger.warning(
-                "Rate limit exceeded",
-                client_id=client_id,
-                path=request.url.path,
-                method=request.method
-            )
-            return Response(
-                content='{"detail":"Rate limit exceeded. Try again later."}',
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                headers={"Content-Type": "application/json"}
-            )
-        
-        # Add rate limit headers
-        start_time = time.time()
-        response = await call_next(request)
-        process_time = time.time() - start_time
-        
-        # Add custom headers
-        response.headers["X-RateLimit-Limit"] = str(self.calls)
-        response.headers["X-RateLimit-Remaining"] = str(
-            max(0, self.calls - len(self.clients[client_id]))
-        )
-        response.headers["X-Process-Time"] = str(round(process_time, 4))
-        
-        logger.info(
-            "Request processed",
-            client_id=client_id,
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            process_time=round(process_time, 4)
-        )
-        
-        return response
+        """Pass requests through without rate limiting."""
+        return await call_next(request)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for detailed request/response logging."""
