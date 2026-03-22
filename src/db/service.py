@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from math import ceil
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +13,70 @@ from src.db.models import BlogPost, Category
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _normalize_optional_string(value: Any) -> Optional[str]:
+    """Normalize optional string inputs from API payloads."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    value = value.strip()
+    return value or None
+
+
+def _prepare_blog_post_payload(
+    payload: Dict[str, Any],
+    *,
+    existing: Optional[BlogPost] = None,
+) -> Dict[str, Any]:
+    """Normalize payloads so manual and AI-created articles share one persistence path."""
+    normalized = dict(payload)
+
+    title = _normalize_optional_string(normalized.get("title")) or (
+        existing.title if existing is not None else None
+    )
+    keyword = _normalize_optional_string(normalized.get("keyword")) or (
+        existing.keyword if existing is not None else None
+    )
+    run_id = _normalize_optional_string(normalized.get("run_id")) or (
+        existing.run_id if existing is not None else None
+    )
+
+    normalized["title"] = title
+    normalized["slug"] = _normalize_optional_string(normalized.get("slug")) or (
+        existing.slug if existing is not None else None
+    )
+    normalized["description"] = _normalize_optional_string(normalized.get("description")) or (
+        existing.description if existing is not None else None
+    )
+    normalized["body"] = _normalize_optional_string(normalized.get("body")) or (
+        existing.body if existing is not None else None
+    )
+    normalized["author_name"] = _normalize_optional_string(normalized.get("author_name"))
+    normalized["author_avatar"] = _normalize_optional_string(normalized.get("author_avatar"))
+    normalized["category"] = _normalize_optional_string(normalized.get("category"))
+    normalized["cover_image"] = _normalize_optional_string(normalized.get("cover_image"))
+    normalized["user_id"] = _normalize_optional_string(normalized.get("user_id"))
+    normalized["model_used"] = _normalize_optional_string(normalized.get("model_used"))
+    normalized["error_message"] = _normalize_optional_string(normalized.get("error_message"))
+    normalized_status = _normalize_optional_string(normalized.get("status"))
+
+    normalized["keyword"] = keyword or title
+    normalized["run_id"] = run_id or f"manual-{uuid.uuid4().hex[:24]}"
+    normalized["tags"] = normalized.get("tags") or []
+    normalized["customization"] = normalized.get("customization") or {}
+    normalized["sources_used"] = normalized.get("sources_used") or []
+    normalized["source_details"] = normalized.get("source_details") or []
+    normalized["seo_scores"] = normalized.get("seo_scores") or {}
+
+    if normalized.get("final_score") is None:
+        normalized["final_score"] = 0.0
+    if normalized.get("success") is None:
+        normalized["success"] = True
+    normalized["status"] = normalized_status or "draft"
+
+    return normalized
 
 
 def init_db() -> None:
@@ -33,7 +98,7 @@ def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:
 
     session = session_local()
     try:
-        blog_post = BlogPost(**payload)
+        blog_post = BlogPost(**_prepare_blog_post_payload(payload))
         session.add(blog_post)
         session.commit()
         session.refresh(blog_post)
@@ -176,7 +241,7 @@ def create_blog_post(payload: Dict[str, Any]) -> BlogPost:
 
     session = session_local()
     try:
-        blog_post = BlogPost(**payload)
+        blog_post = BlogPost(**_prepare_blog_post_payload(payload))
         session.add(blog_post)
         session.commit()
         session.refresh(blog_post)
@@ -201,7 +266,8 @@ def update_blog_post(post_id: int, payload: Dict[str, Any]) -> Optional[BlogPost
         if blog_post is None:
             return None
 
-        for key, value in payload.items():
+        normalized_payload = _prepare_blog_post_payload(payload, existing=blog_post)
+        for key, value in normalized_payload.items():
             setattr(blog_post, key, value)
 
         session.commit()
