@@ -12,11 +12,14 @@ import asyncio
 from dotenv import load_dotenv
 
 from src.api.routes.blog import router as blog_router
+from src.api.routes.billing_admin import router as billing_admin_router
 from src.api.middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from src.api.auth import verify_api_key
 from src.db.service import init_db
 from src.utils.logger import configure_logging, get_logger
 from src.schemas.models import ErrorDetail
+from src.schemas.billing_admin import BillingAdminErrorDetail, BillingAdminErrorResponse
+from src.service.billing_admin_product_api_client import BillingAdminApiException
 from langsmith import Client as LangSmithClient
 from fastapi.encoders import jsonable_encoder
 # Load environment variables
@@ -153,6 +156,35 @@ def create_app() -> FastAPI:
             content=jsonable_encoder(error_detail)
         )
 
+    @app.exception_handler(BillingAdminApiException)
+    async def billing_admin_exception_handler(
+        request: Request,
+        exc: BillingAdminApiException,
+    ):
+        """Handle billing admin exceptions with the documented detail payload."""
+
+        error_detail = BillingAdminErrorResponse(
+            detail=BillingAdminErrorDetail(
+                code=exc.code,
+                message=exc.message,
+                field_errors=exc.field_errors,
+            )
+        )
+
+        logger.error(
+            "Billing admin exception occurred",
+            status_code=exc.status_code,
+            code=exc.code,
+            message=exc.message,
+            path=request.url.path,
+            method=request.method,
+        )
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=jsonable_encoder(error_detail),
+        )
+
     # Add middleware in correct order (last added = first executed)
     
     # CORS middleware (should be last)
@@ -160,7 +192,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
     
@@ -206,8 +238,10 @@ def create_app() -> FastAPI:
     # app.include_router(blog_router, dependencies=[Depends(verify_api_key)])
     if os.getenv("API_KEY"):
         app.include_router(blog_router, dependencies=[Depends(verify_api_key)])
+        app.include_router(billing_admin_router, dependencies=[Depends(verify_api_key)])
     else:
         app.include_router(blog_router)
+        app.include_router(billing_admin_router)
 
     logger.info(
         "Enhanced FastAPI application created",

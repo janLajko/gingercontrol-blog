@@ -1,16 +1,17 @@
-"""SQLAlchemy models for generated blog posts."""
+"""SQLAlchemy models for blog posts, categories, and billing products."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 
-JSONType = JSON
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class BlogPost(Base):
@@ -53,6 +54,41 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class BillingProductRecord(Base):
+    """Persisted billing product configuration and Stripe bindings."""
+
+    __tablename__ = "billing_product"
+    __table_args__ = (
+        CheckConstraint(
+            "product_type in ('subscription', 'credit_pack')",
+            name="ck_billing_product_type",
+        ),
+    )
+
+    product_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    product_family: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_type: Mapped[str] = mapped_column(String(32))
+    stripe_product_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    stripe_price_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    config_json: Mapped[dict] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

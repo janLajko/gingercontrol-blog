@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select
 
-from src.db.base import Base, get_engine, get_session_local
-from src.db.models import BlogPost, Category
+from src.db.base import Base, get_billing_engine, get_engine, get_session_local
+from src.db.models import BillingProductRecord, BlogPost, Category
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -80,13 +80,28 @@ def _prepare_blog_post_payload(
 
 
 def init_db() -> None:
-    """Create database tables when DATABASE_URL is configured."""
+    """Create blog tables and billing tables on their configured databases."""
     engine = get_engine()
     if engine is None:
-        logger.warning("DATABASE_URL is not configured. Skipping database init.")
-        return
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables initialized")
+        logger.warning("DATABASE_URL is not configured. Skipping blog database init.")
+    else:
+        Base.metadata.create_all(
+            bind=engine,
+            tables=[BlogPost.__table__, Category.__table__],
+        )
+        logger.info("Blog database tables initialized")
+
+    billing_engine = get_billing_engine()
+    if billing_engine is None:
+        logger.warning(
+            "BILLING_DATABASE_URL is not configured. Skipping billing database init."
+        )
+    else:
+        Base.metadata.create_all(
+            bind=billing_engine,
+            tables=[BillingProductRecord.__table__],
+        )
+        logger.info("Billing database tables initialized")
 
 
 def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:
