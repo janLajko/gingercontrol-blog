@@ -11,9 +11,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from src.db.base import get_billing_session_local
-from src.db.models import BillingProductRecord
+from src.db.models import BillingFeaturePolicyRecord, BillingProductRecord
 from src.schemas.billing_admin import (
     BillingCreateProductRequest,
+    BillingFeaturePolicy,
+    BillingFeaturePolicyListResponse,
     BillingPatchProductRequest,
     BillingProduct,
     BillingProductConfigJson,
@@ -53,6 +55,37 @@ class BillingAdminProductApiClient:
     ) -> None:
         self._session_local_factory = session_local_factory or get_billing_session_local
         self._stripe_gateway = stripe_gateway or StripeBillingGateway()
+
+    async def list_feature_policies(self) -> BillingFeaturePolicyListResponse:
+        session = self._open_session()
+        try:
+            rows = (
+                session.execute(
+                    select(BillingFeaturePolicyRecord).order_by(
+                        BillingFeaturePolicyRecord.active.desc(),
+                        BillingFeaturePolicyRecord.feature_key.asc(),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return BillingFeaturePolicyListResponse(
+                items=[
+                    BillingFeaturePolicy(
+                        feature_key=row.feature_key,
+                        control_mode=row.control_mode,
+                        name=row.name,
+                        description=row.description,
+                        active=row.active,
+                        config_json=dict(row.config_json or {}),
+                        created_at=_to_rfc3339(row.created_at),
+                        updated_at=_to_rfc3339(row.updated_at),
+                    )
+                    for row in rows
+                ]
+            )
+        finally:
+            session.close()
 
     async def list_products(
         self,

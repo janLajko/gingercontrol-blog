@@ -93,3 +93,26 @@ class BillingProductRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+
+class BillingFeaturePolicyRecord(Base):
+    """Persisted billing feature policy definitions."""
+
+    __tablename__ = "billing_feature_policy"
+    __table_args__ = (
+        CheckConstraint(
+            "control_mode in ('free', 'grant_required', 'blocked')",
+            name="ck_billing_feature_policy_control_mode",
+        ),
+    )
+
+    feature_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    control_mode: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    config_json: Mapped[dict] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )

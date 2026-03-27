@@ -16,6 +16,7 @@ class BillingAdminSchema(BaseModel):
 BillingProductFamily = Literal["simulate", "classification"]
 BillingProductType = Literal["subscription", "credit_pack"]
 BillingGrantMode = Literal["unlimited", "prepaid_quota"]
+BillingFeatureControlMode = Literal["free", "grant_required", "blocked"]
 BillingCurrency = Literal["usd"]
 BillingRecurringInterval = Literal["day", "week", "month", "year"]
 BillingStripeSyncMode = Literal["create", "bind_existing"]
@@ -127,6 +128,25 @@ class BillingProductListResponse(BillingAdminSchema):
     page: int = Field(..., ge=1)
     page_size: int = Field(..., ge=1, le=100)
     total: int = Field(..., ge=0)
+
+
+class BillingFeaturePolicy(BillingAdminSchema):
+    """Billing feature policy row."""
+
+    feature_key: str = Field(..., min_length=1, max_length=128)
+    control_mode: BillingFeatureControlMode
+    name: str | None = None
+    description: str | None = None
+    active: bool
+    config_json: dict
+    created_at: str
+    updated_at: str
+
+
+class BillingFeaturePolicyListResponse(BillingAdminSchema):
+    """List response for billing feature policies."""
+
+    items: list[BillingFeaturePolicy]
 
 
 class BillingCreateStripePriceRecurring(BillingAdminSchema):

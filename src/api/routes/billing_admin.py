@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from src.schemas.billing_admin import (
     BillingCreateProductRequest,
+    BillingFeaturePolicyListResponse,
     BillingPatchProductRequest,
     BillingProduct,
     BillingProductDetail,
@@ -23,6 +24,22 @@ from src.service.billing_admin_product_api_client import (
 )
 
 router = APIRouter(prefix="/api/admin/billing", tags=["billing-admin"])
+
+
+@router.get(
+    "/feature-policies",
+    response_model=BillingFeaturePolicyListResponse,
+    summary="List billing feature policies",
+)
+async def list_billing_feature_policies(
+    api_client: Annotated[
+        BillingAdminProductApiClient,
+        Depends(get_billing_admin_product_api_client),
+    ] = ...,
+) -> BillingFeaturePolicyListResponse:
+    """GET /api/admin/billing/feature-policies."""
+
+    return await api_client.list_feature_policies()
 
 
 @router.get(
