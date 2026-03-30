@@ -13,7 +13,7 @@ class BillingAdminSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-BillingProductFamily = Literal["simulate", "classification"]
+BillingProductFamily = Literal["simulate", "classification", "system"]
 BillingProductType = Literal["subscription", "credit_pack"]
 BillingGrantMode = Literal["unlimited", "prepaid_quota"]
 BillingFeatureControlMode = Literal["free", "grant_required", "blocked"]
