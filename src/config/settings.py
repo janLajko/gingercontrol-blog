@@ -47,6 +47,7 @@ BILLING_DATABASE_URL = os.getenv("BILLING_DATABASE_URL")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_API_BASE_URL = os.getenv("STRIPE_API_BASE_URL", "https://api.stripe.com")
 GCS_CMS_IMAGE_PREFIX = os.getenv("GCS_CMS_IMAGE_PREFIX", "blog-covers/")
+GCS_CMS_MEDIA_PREFIX = os.getenv("GCS_CMS_MEDIA_PREFIX", "blog-media/")
 
 # Debug print
 print(f"Config loaded - google api key set: {bool(GOOGLE_API_KEY)}, ")

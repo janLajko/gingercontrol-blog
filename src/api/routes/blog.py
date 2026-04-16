@@ -24,7 +24,7 @@ from src.schemas.models import (
 )
 from src.api.auth import verify_api_key
 from src.agents.graph import get_blog_generation_graph
-from src.config.settings import GCS_CMS_IMAGE_PREFIX
+from src.config.settings import GCS_CMS_IMAGE_PREFIX, GCS_CMS_MEDIA_PREFIX
 from src.db.service import (
     save_blog_post,
     list_blog_posts,
@@ -497,6 +497,78 @@ async def upload_article_image(file: UploadFile = File(...)):
         "size_bytes": uploaded.size_bytes,
         "gcs_uri": uploaded.gcs_uri,
         "url": uploaded.public_url,
+    }
+
+
+MAX_IMAGE_SIZE = 10 * 1024 * 1024   # 10 MB
+MAX_VIDEO_SIZE = 100 * 1024 * 1024   # 100 MB
+
+
+@router.post(
+    "/uploads/media",
+    summary="Upload inline media (image or video)",
+    description="Upload an image or video to GCS for embedding in article markdown body",
+)
+async def upload_article_media(file: UploadFile = File(...)):
+    """Upload an image or video for inline use in article markdown."""
+    content_type = (file.content_type or "").lower()
+    is_image = content_type.startswith("image/")
+    is_video = content_type.startswith("video/")
+
+    if not is_image and not is_video:
+        raise HTTPException(
+            status_code=400,
+            detail="Only image or video uploads are supported",
+        )
+
+    # Check file size
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+
+    max_size = MAX_IMAGE_SIZE if is_image else MAX_VIDEO_SIZE
+    if size > max_size:
+        limit_mb = max_size // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {limit_mb}MB",
+        )
+
+    try:
+        upload_service = GcsUploadService(prefix=GCS_CMS_MEDIA_PREFIX)
+        uploaded = upload_service.upload_fileobj(
+            fileobj=file.file,
+            filename=file.filename or "media",
+            content_type=file.content_type or "application/octet-stream",
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to upload CMS media",
+            filename=file.filename,
+            content_type=file.content_type,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=500, detail="Media upload failed") from exc
+    finally:
+        await file.close()
+
+    logger.info(
+        "CMS media uploaded",
+        filename=file.filename,
+        content_type=uploaded.content_type,
+        gcs_uri=uploaded.gcs_uri,
+        public_url=uploaded.public_url,
+        size_bytes=uploaded.size_bytes,
+    )
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "content_type": uploaded.content_type,
+        "size_bytes": uploaded.size_bytes,
+        "gcs_uri": uploaded.gcs_uri,
+        "url": uploaded.public_url,
+        "media_type": "image" if is_image else "video",
     }
 
 
