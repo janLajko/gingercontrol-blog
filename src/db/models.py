@@ -39,6 +39,7 @@ class BlogPost(Base):
     final_score: Mapped[float] = mapped_column(Float, default=0.0)
     model_used: Mapped[str | None] = mapped_column(String(120), nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, default=False)
+    type: Mapped[str] = mapped_column(String(32), default="article", index=True)
     status: Mapped[str] = mapped_column(String(32), default="failed")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

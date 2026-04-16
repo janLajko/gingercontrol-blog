@@ -264,6 +264,7 @@ class ArticleBase(BaseModel):
     final_score: Optional[float] = Field(default=0.0)
     model_used: Optional[str] = Field(default=None, max_length=120)
     customization: Dict[str, Any] = Field(default_factory=dict)
+    type: Optional[str] = Field(default="article", max_length=32)
     error_message: Optional[str] = Field(default=None)
 
     @validator("slug")
@@ -315,6 +316,7 @@ class ArticleListItemResponse(BaseModel):
     author_name: Optional[str] = Field(default=None, description="Author display name")
     author_avatar: Optional[str] = Field(default=None, description="Author avatar URL")
     category: Optional[str] = Field(default=None, description="Article category")
+    type: Optional[str] = Field(default="article", description="Content type: article or news")
 
 
 class PaginatedArticleListResponse(BaseModel):

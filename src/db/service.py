@@ -75,6 +75,7 @@ def _prepare_blog_post_payload(
     if normalized.get("success") is None:
         normalized["success"] = True
     normalized["status"] = normalized_status or "draft"
+    normalized.setdefault("type", "article")
 
     return normalized
 
@@ -130,6 +131,7 @@ def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:
 def list_blog_posts(
     category: Optional[str] = None,
     status: Optional[str] = None,
+    type: Optional[str] = None,
 ) -> List[BlogPost]:
     """Return all blog posts ordered by newest first."""
     session_local = get_session_local()
@@ -142,10 +144,13 @@ def list_blog_posts(
         stmt = select(BlogPost).order_by(BlogPost.created_at.desc(), BlogPost.id.desc())
         normalized_category = (category or "").strip()
         normalized_status = (status or "").strip()
+        normalized_type = (type or "").strip()
         if normalized_category:
             stmt = stmt.where(BlogPost.category == normalized_category)
         if normalized_status:
             stmt = stmt.where(BlogPost.status == normalized_status)
+        if normalized_type:
+            stmt = stmt.where(BlogPost.type == normalized_type)
         return list(session.execute(stmt).scalars().all())
     finally:
         session.close()
@@ -157,6 +162,7 @@ def list_blog_post_summaries(
     page_limit: int = 20,
     category: Optional[str] = None,
     status: Optional[str] = None,
+    type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return a paginated list of article summaries."""
     session_local = get_session_local()
@@ -174,6 +180,7 @@ def list_blog_post_summaries(
     try:
         normalized_category = (category or "").strip()
         normalized_status = (status or "").strip()
+        normalized_type = (type or "").strip()
 
         count_stmt = select(func.count()).select_from(BlogPost)
         items_stmt = (
@@ -189,6 +196,7 @@ def list_blog_post_summaries(
                 BlogPost.author_name,
                 BlogPost.author_avatar,
                 BlogPost.category,
+                BlogPost.type,
             )
             .order_by(BlogPost.created_at.desc(), BlogPost.id.desc())
             .offset((page - 1) * page_limit)
@@ -201,6 +209,9 @@ def list_blog_post_summaries(
         if normalized_status:
             count_stmt = count_stmt.where(BlogPost.status == normalized_status)
             items_stmt = items_stmt.where(BlogPost.status == normalized_status)
+        if normalized_type:
+            count_stmt = count_stmt.where(BlogPost.type == normalized_type)
+            items_stmt = items_stmt.where(BlogPost.type == normalized_type)
 
         total_count = int(session.execute(count_stmt).scalar_one() or 0)
         total_pages = ceil(total_count / page_limit) if total_count > 0 else 0
@@ -219,6 +230,7 @@ def list_blog_post_summaries(
                 "author_name": row.author_name,
                 "author_avatar": row.author_avatar,
                 "category": row.category,
+                "type": row.type,
             }
             for row in rows
         ]
