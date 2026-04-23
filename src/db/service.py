@@ -9,7 +9,16 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func, select
 
 from src.db.base import Base, get_billing_engine, get_engine, get_session_local
-from src.db.models import BillingProductRecord, BlogPost, Category
+from src.db.models import (
+    BillingEntitlementGrantRecord,
+    BillingFeaturePolicyRecord,
+    BillingProductRecord,
+    BillingPurchaseRecord,
+    BillingUsageEventRecord,
+    BlogPost,
+    Category,
+    UserRecord,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -100,7 +109,14 @@ def init_db() -> None:
     else:
         Base.metadata.create_all(
             bind=billing_engine,
-            tables=[BillingProductRecord.__table__],
+            tables=[
+                UserRecord.__table__,
+                BillingProductRecord.__table__,
+                BillingFeaturePolicyRecord.__table__,
+                BillingPurchaseRecord.__table__,
+                BillingEntitlementGrantRecord.__table__,
+                BillingUsageEventRecord.__table__,
+            ],
         )
         logger.info("Billing database tables initialized")
 

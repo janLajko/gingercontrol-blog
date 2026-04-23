@@ -16,6 +16,7 @@ from src.schemas.billing_admin import (
     BillingCreateProductRequest,
     BillingFeaturePolicy,
     BillingFeaturePolicyListResponse,
+    BillingOptionalProductConfigJson,
     BillingPatchProductRequest,
     BillingProduct,
     BillingProductConfigJson,
@@ -42,6 +43,21 @@ class BillingAdminApiException(Exception):
     code: str
     message: str
     field_errors: dict[str, str] | None = None
+
+
+@dataclass(slots=True)
+class NormalizedCreateProductPayload:
+    """Normalized create payload so system products can use server defaults."""
+
+    product_code: str
+    product_family: str
+    name: str
+    description: str | None
+    product_type: str
+    active: bool
+    sort_order: int
+    config_json: BillingOptionalProductConfigJson
+    stripe_sync: Any | None
 
 
 class BillingAdminProductApiClient:
@@ -157,49 +173,54 @@ class BillingAdminProductApiClient:
             session.close()
 
     async def create_product(self, payload: BillingCreateProductRequest) -> BillingProduct:
-        self._validate_create_payload(payload)
+        normalized_payload = self._normalize_create_payload(payload)
         session = self._open_session()
         try:
             existing = session.execute(
                 select(BillingProductRecord).where(
-                    BillingProductRecord.product_code == payload.product_code
+                    BillingProductRecord.product_code == normalized_payload.product_code
                 )
             ).scalar_one_or_none()
             if existing is not None:
                 raise BillingAdminApiException(
                     status_code=409,
                     code="product_code_conflict",
-                    message=f"product_code already exists: {payload.product_code}",
+                    message=f"product_code already exists: {normalized_payload.product_code}",
                     field_errors={"product_code": "already_exists"},
                 )
 
-            stripe_product_id: str
-            stripe_price_id: str
-            if payload.stripe_sync.mode == "create":
-                stripe_product, stripe_price = await self._create_stripe_objects(payload)
+            stripe_product_id: str | None
+            stripe_price_id: str | None
+            if normalized_payload.stripe_sync is None:
+                stripe_product_id = None
+                stripe_price_id = None
+            elif normalized_payload.stripe_sync.mode == "create":
+                stripe_product, stripe_price = await self._create_stripe_objects(
+                    normalized_payload
+                )
                 stripe_product_id = str(stripe_product["id"])
                 stripe_price_id = str(stripe_price["id"])
             else:
                 stripe_product, stripe_price = await self._validate_bound_stripe_objects(
-                    stripe_product_id=payload.stripe_sync.stripe_product_id,
-                    stripe_price_id=payload.stripe_sync.stripe_price_id,
-                    product_type=payload.product_type,
+                    stripe_product_id=normalized_payload.stripe_sync.stripe_product_id,
+                    stripe_price_id=normalized_payload.stripe_sync.stripe_price_id,
+                    product_type=normalized_payload.product_type,
                 )
                 stripe_product_id = str(stripe_product["id"])
                 stripe_price_id = str(stripe_price["id"])
 
             now = datetime.utcnow()
             record = BillingProductRecord(
-                product_code=payload.product_code,
-                product_family=payload.product_family,
-                name=payload.name,
-                description=payload.description,
-                product_type=payload.product_type,
+                product_code=normalized_payload.product_code,
+                product_family=normalized_payload.product_family,
+                name=normalized_payload.name,
+                description=normalized_payload.description,
+                product_type=normalized_payload.product_type,
                 stripe_product_id=stripe_product_id,
                 stripe_price_id=stripe_price_id,
-                active=payload.active,
-                sort_order=payload.sort_order,
-                config_json=_config_json_dict(payload.config_json),
+                active=normalized_payload.active,
+                sort_order=normalized_payload.sort_order,
+                config_json=_config_json_dict(normalized_payload.config_json),
                 created_at=now,
                 updated_at=now,
             )
@@ -212,7 +233,7 @@ class BillingAdminProductApiClient:
             raise BillingAdminApiException(
                 status_code=409,
                 code="product_code_conflict",
-                message=f"product_code already exists: {payload.product_code}",
+                message=f"product_code already exists: {normalized_payload.product_code}",
                 field_errors={"product_code": "already_exists"},
             ) from exc
         except BillingAdminApiException:
@@ -233,50 +254,63 @@ class BillingAdminProductApiClient:
         try:
             record = self._get_product_or_raise(session, product_code)
             self._validate_update_payload(payload, product_type=record.product_type)
+            if self._has_stripe_binding(record):
+                await self._sync_stripe_product(
+                    stripe_product_id=_require_stripe_binding(
+                        record.stripe_product_id,
+                        field_name="stripe_product_id",
+                    ),
+                    name=payload.name,
+                    description=payload.description,
+                    active=payload.active,
+                    product_code=record.product_code,
+                    product_family=record.product_family,
+                    product_type=record.product_type,
+                )
 
-            await self._sync_stripe_product(
-                stripe_product_id=_require_stripe_binding(
-                    record.stripe_product_id,
-                    field_name="stripe_product_id",
-                ),
-                name=payload.name,
-                description=payload.description,
-                active=payload.active,
-                product_code=record.product_code,
-                product_family=record.product_family,
-                product_type=record.product_type,
-            )
-
-            if (
+                if (
+                    payload.stripe_sync.price_change is not None
+                    and payload.stripe_sync.price_change.enabled
+                ):
+                    new_price = await self._create_stripe_price(
+                        stripe_product_id=_require_stripe_binding(
+                            record.stripe_product_id,
+                            field_name="stripe_product_id",
+                        ),
+                        active=payload.active,
+                        product_code=record.product_code,
+                        config_json=payload.config_json,
+                        price_payload=payload.stripe_sync.price_change.model_dump(
+                            exclude_none=True
+                        ),
+                    )
+                    if record.stripe_price_id != str(new_price["id"]):
+                        await self._deactivate_previous_price(
+                            _require_stripe_binding(
+                                record.stripe_price_id,
+                                field_name="stripe_price_id",
+                            )
+                        )
+                    record.stripe_price_id = str(new_price["id"])
+                else:
+                    await self._sync_stripe_price_metadata(
+                        stripe_price_id=_require_stripe_binding(
+                            record.stripe_price_id,
+                            field_name="stripe_price_id",
+                        ),
+                        active=payload.active,
+                        product_code=record.product_code,
+                        config_json=payload.config_json,
+                    )
+            elif (
                 payload.stripe_sync.price_change is not None
                 and payload.stripe_sync.price_change.enabled
             ):
-                new_price = await self._create_stripe_price(
-                    stripe_product_id=record.stripe_product_id,
-                    active=payload.active,
-                    product_code=record.product_code,
-                    config_json=payload.config_json,
-                    price_payload=payload.stripe_sync.price_change.model_dump(
-                        exclude_none=True
-                    ),
-                )
-                if record.stripe_price_id != str(new_price["id"]):
-                    await self._deactivate_previous_price(
-                        _require_stripe_binding(
-                            record.stripe_price_id,
-                            field_name="stripe_price_id",
-                        )
-                    )
-                record.stripe_price_id = str(new_price["id"])
-            else:
-                await self._sync_stripe_price_metadata(
-                    stripe_price_id=_require_stripe_binding(
-                        record.stripe_price_id,
-                        field_name="stripe_price_id",
-                    ),
-                    active=payload.active,
-                    product_code=record.product_code,
-                    config_json=payload.config_json,
+                raise BillingAdminApiException(
+                    status_code=422,
+                    code="stripe_binding_missing",
+                    message="billing product is not bound to Stripe",
+                    field_errors={"stripe_sync.price_change": "not_supported"},
                 )
 
             record.name = payload.name
@@ -312,27 +346,28 @@ class BillingAdminProductApiClient:
         session = self._open_session()
         try:
             record = self._get_product_or_raise(session, product_code)
-            await self._sync_stripe_product(
-                stripe_product_id=_require_stripe_binding(
-                    record.stripe_product_id,
-                    field_name="stripe_product_id",
-                ),
-                name=record.name,
-                description=record.description,
-                active=payload.active,
-                product_code=record.product_code,
-                product_family=record.product_family,
-                product_type=record.product_type,
-            )
-            await self._sync_stripe_price_metadata(
-                stripe_price_id=_require_stripe_binding(
-                    record.stripe_price_id,
-                    field_name="stripe_price_id",
-                ),
-                active=payload.active,
-                product_code=record.product_code,
-                config_json=_normalize_config_json_entries(record.config_json),
-            )
+            if self._has_stripe_binding(record):
+                await self._sync_stripe_product(
+                    stripe_product_id=_require_stripe_binding(
+                        record.stripe_product_id,
+                        field_name="stripe_product_id",
+                    ),
+                    name=record.name,
+                    description=record.description,
+                    active=payload.active,
+                    product_code=record.product_code,
+                    product_family=record.product_family,
+                    product_type=record.product_type,
+                )
+                await self._sync_stripe_price_metadata(
+                    stripe_price_id=_require_stripe_binding(
+                        record.stripe_price_id,
+                        field_name="stripe_price_id",
+                    ),
+                    active=payload.active,
+                    product_code=record.product_code,
+                    config_json=_normalize_config_json_entries(record.config_json),
+                )
 
             record.active = payload.active
             record.updated_at = datetime.utcnow()
@@ -356,6 +391,16 @@ class BillingAdminProductApiClient:
         session = self._open_session()
         try:
             record = self._get_product_or_raise(session, product_code)
+            if not self._has_stripe_binding(record):
+                raise BillingAdminApiException(
+                    status_code=422,
+                    code="stripe_binding_missing",
+                    message="billing product is not bound to Stripe",
+                    field_errors={
+                        "stripe_product_id": "not_bound",
+                        "stripe_price_id": "not_bound",
+                    },
+                )
 
             if payload.sync_product:
                 await self._sync_stripe_product(
@@ -422,9 +467,56 @@ class BillingAdminProductApiClient:
         return record
 
     def _validate_create_payload(self, payload: BillingCreateProductRequest) -> None:
-        if payload.stripe_sync.mode == "create":
+        if payload.product_family != "system":
+            if payload.name is None:
+                raise BillingAdminApiException(
+                    status_code=400,
+                    code="validation_error",
+                    message="name is required",
+                    field_errors={"name": "required"},
+                )
+            if payload.product_type is None:
+                raise BillingAdminApiException(
+                    status_code=400,
+                    code="validation_error",
+                    message="product_type is required",
+                    field_errors={"product_type": "required"},
+                )
+            if payload.active is None:
+                raise BillingAdminApiException(
+                    status_code=400,
+                    code="validation_error",
+                    message="active is required",
+                    field_errors={"active": "required"},
+                )
+            if payload.sort_order is None:
+                raise BillingAdminApiException(
+                    status_code=400,
+                    code="validation_error",
+                    message="sort_order is required",
+                    field_errors={"sort_order": "required"},
+                )
+            if not payload.config_json:
+                raise BillingAdminApiException(
+                    status_code=400,
+                    code="validation_error",
+                    message="config_json is required",
+                    field_errors={"config_json": "required"},
+                )
+            if payload.stripe_sync is None:
+                raise BillingAdminApiException(
+                    status_code=400,
+                    code="validation_error",
+                    message="stripe_sync is required",
+                    field_errors={"stripe_sync": "required"},
+                )
+
+        if payload.stripe_sync is not None and payload.stripe_sync.mode == "create":
             _validate_price_type_against_product_type(
-                product_type=payload.product_type,
+                product_type=_require_field(
+                    payload.product_type,
+                    field_name="product_type",
+                ),
                 price_type=payload.stripe_sync.price.type,
                 field_name="stripe_sync.price.type",
             )
@@ -444,6 +536,39 @@ class BillingAdminProductApiClient:
                 price_type=payload.stripe_sync.price_change.type,
                 field_name="stripe_sync.price_change.type",
             )
+
+    def _normalize_create_payload(
+        self,
+        payload: BillingCreateProductRequest,
+    ) -> NormalizedCreateProductPayload:
+        self._validate_create_payload(payload)
+        if payload.product_family == "system":
+            return NormalizedCreateProductPayload(
+                product_code=payload.product_code,
+                product_family=payload.product_family,
+                name=(payload.name or payload.product_code).strip(),
+                description=payload.description,
+                product_type=payload.product_type or "credit_pack",
+                active=True if payload.active is None else payload.active,
+                sort_order=0 if payload.sort_order is None else payload.sort_order,
+                config_json=payload.config_json or [],
+                stripe_sync=payload.stripe_sync,
+            )
+
+        return NormalizedCreateProductPayload(
+            product_code=payload.product_code,
+            product_family=payload.product_family,
+            name=_require_field(payload.name, field_name="name"),
+            description=payload.description,
+            product_type=_require_field(payload.product_type, field_name="product_type"),
+            active=_require_field(payload.active, field_name="active"),
+            sort_order=_require_field(payload.sort_order, field_name="sort_order"),
+            config_json=_require_field(payload.config_json, field_name="config_json"),
+            stripe_sync=_require_field(payload.stripe_sync, field_name="stripe_sync"),
+        )
+
+    def _has_stripe_binding(self, record: BillingProductRecord) -> bool:
+        return bool(record.stripe_product_id and record.stripe_price_id)
 
     async def _to_billing_product_response(
         self,
@@ -468,8 +593,8 @@ class BillingAdminProductApiClient:
     def _to_billing_product_detail_response(
         self,
         record: BillingProductRecord,
-        stripe_product: dict[str, Any],
-        stripe_price: dict[str, Any],
+        stripe_product: dict[str, Any] | None,
+        stripe_price: dict[str, Any] | None,
     ) -> BillingProductDetail:
         config_json = self._resolve_config_json_from_sources(
             record,
@@ -487,7 +612,11 @@ class BillingAdminProductApiClient:
             sort_order=record.sort_order,
             config_json=config_json,
             grant_preview=_grant_preview_from_config(config_json),
-            stripe_catalog=_to_stripe_catalog_info(stripe_product, stripe_price),
+            stripe_catalog=(
+                _to_stripe_catalog_info(stripe_product, stripe_price)
+                if stripe_product is not None and stripe_price is not None
+                else None
+            ),
             created_at=_to_rfc3339(record.created_at),
             updated_at=_to_rfc3339(record.updated_at),
         )
@@ -531,6 +660,9 @@ class BillingAdminProductApiClient:
                 fallback_item["credits"] = _normalize_optional_int(metadata.get("credits"))
             normalized = [fallback_item]
 
+        if len(normalized) == 0:
+            return []
+
         return _validate_config_json_payload(
             normalized,
             product_code=record.product_code,
@@ -538,7 +670,7 @@ class BillingAdminProductApiClient:
 
     async def _create_stripe_objects(
         self,
-        payload: BillingCreateProductRequest,
+        payload: NormalizedCreateProductPayload,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         try:
             stripe_product = await self._stripe_gateway.create_product(
@@ -617,7 +749,9 @@ class BillingAdminProductApiClient:
     async def _retrieve_stripe_state(
         self,
         record: BillingProductRecord,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        if not self._has_stripe_binding(record):
+            return None, None
         try:
             stripe_product = await self._stripe_gateway.retrieve_product(
                 _require_stripe_binding(
@@ -875,6 +1009,17 @@ def _require_stripe_binding(value: str | None, *, field_name: str) -> str:
         status_code=502,
         code="stripe_sync_failed",
         message=f"{field_name} is not set for billing product",
+    )
+
+
+def _require_field(value: Any, *, field_name: str):
+    if value is not None:
+        return value
+    raise BillingAdminApiException(
+        status_code=400,
+        code="validation_error",
+        message=f"{field_name} is required",
+        field_errors={field_name: "required"},
     )
 
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 
 class BillingAdminSchema(BaseModel):
@@ -20,6 +21,10 @@ BillingFeatureControlMode = Literal["free", "grant_required", "blocked"]
 BillingCurrency = Literal["usd"]
 BillingRecurringInterval = Literal["day", "week", "month", "year"]
 BillingStripeSyncMode = Literal["create", "bind_existing"]
+BillingPurchaseStatus = Literal[
+    "pending", "active", "expired", "canceled", "consumed", "failed"
+]
+BillingGrantStatus = Literal["active", "expired", "consumed", "canceled"]
 
 
 class BillingAdminErrorDetail(BillingAdminSchema):
@@ -71,7 +76,11 @@ def _normalize_config_json_array(value):
 BillingProductConfigJson = Annotated[
     list[BillingProductConfigEntry],
     BeforeValidator(_normalize_config_json_array),
-    Field(min_length=1),
+]
+
+BillingOptionalProductConfigJson = Annotated[
+    list[BillingProductConfigEntry],
+    BeforeValidator(_normalize_config_json_array),
 ]
 
 
@@ -114,11 +123,25 @@ class StripeCatalogInfo(BillingAdminSchema):
     active: bool
 
 
+class StripeCatalogInfoNone(BillingAdminSchema):
+    """Empty Stripe catalog marker for local-only system products."""
+
+    stripe_product_id: str = ""
+    stripe_price_id: str = ""
+    currency: BillingCurrency = "usd"
+    unit_amount: int = 0
+    billing_scheme: str = ""
+    recurring_interval: BillingRecurringInterval | None = None
+    recurring_interval_count: int | None = None
+    lookup_key: str | None = None
+    active: bool = False
+
+
 class BillingProductDetail(BillingProduct):
     """Detailed BillingProduct response model."""
 
     grant_preview: list[GrantPreview]
-    stripe_catalog: StripeCatalogInfo
+    stripe_catalog: StripeCatalogInfo | None = None
 
 
 class BillingProductListResponse(BillingAdminSchema):
@@ -205,13 +228,143 @@ class BillingCreateProductRequest(BillingAdminSchema):
 
     product_code: str = Field(..., min_length=1, max_length=64)
     product_family: BillingProductFamily
-    name: str = Field(..., min_length=1, max_length=128)
+    name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
-    product_type: BillingProductType
-    active: bool
-    sort_order: int
-    config_json: BillingProductConfigJson
-    stripe_sync: BillingCreateStripeSync
+    product_type: BillingProductType | None = None
+    active: bool | None = None
+    sort_order: int | None = None
+    config_json: BillingOptionalProductConfigJson | None = None
+    stripe_sync: BillingCreateStripeSync | None = None
+
+
+class BillingUserOption(BillingAdminSchema):
+    """Searchable user option for manual billing."""
+
+    user_id: int
+    email: str
+    name: str | None = None
+    company_name: str | None = None
+
+
+class BillingUserSearchResponse(BillingAdminSchema):
+    """Search response for billing users."""
+
+    items: list[BillingUserOption]
+
+
+class BillingManualGrantInput(BillingAdminSchema):
+    """Manual entitlement grant input payload."""
+
+    feature_key: str = Field(..., min_length=1, max_length=128)
+    grant_mode: BillingGrantMode
+    quantity: int | None = Field(default=None, ge=1)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_quantity_and_dates(self) -> "BillingManualGrantInput":
+        if self.grant_mode == "prepaid_quota" and self.quantity is None:
+            raise ValueError("quantity is required when grant_mode=prepaid_quota")
+        if self.grant_mode == "unlimited" and self.quantity is not None:
+            raise ValueError("quantity must be omitted when grant_mode=unlimited")
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.ends_at <= self.starts_at
+        ):
+            raise ValueError("ends_at must be after starts_at")
+        return self
+
+
+class BillingCreateManualPurchaseRequest(BillingAdminSchema):
+    """Create admin-manual purchase request payload."""
+
+    product_code: str = Field(..., min_length=1, max_length=64)
+    purchase_starts_at: datetime | None = None
+    purchase_ends_at: datetime | None = None
+    reason: str | None = Field(default=None, max_length=255)
+    contract_no: str | None = Field(default=None, max_length=255)
+    note: str | None = Field(default=None, max_length=2000)
+    grants: list[BillingManualGrantInput] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "BillingCreateManualPurchaseRequest":
+        if (
+            self.purchase_starts_at is not None
+            and self.purchase_ends_at is not None
+            and self.purchase_ends_at <= self.purchase_starts_at
+        ):
+            raise ValueError("purchase_ends_at must be after purchase_starts_at")
+        return self
+
+
+class BillingGrantSnapshot(BillingAdminSchema):
+    """Entitlement grant snapshot for summary responses."""
+
+    grant_id: int
+    purchase_id: int
+    feature_key: str
+    grant_mode: BillingGrantMode
+    granted_quantity: int | None = None
+    remaining_quantity: int | None = None
+    starts_at: str | None = None
+    ends_at: str | None = None
+    status: BillingGrantStatus
+    config_json: dict
+
+
+class BillingPurchaseSnapshot(BillingAdminSchema):
+    """Purchase snapshot with child grants."""
+
+    purchase_id: int
+    product_code: str
+    product_name: str
+    product_family: BillingProductFamily
+    purchase_type: str
+    status: BillingPurchaseStatus
+    purchased_at: str
+    starts_at: str | None = None
+    ends_at: str | None = None
+    source: str | None = None
+    reason: str | None = None
+    contract_no: str | None = None
+    note: str | None = None
+    grants: list[BillingGrantSnapshot]
+
+
+class BillingFeatureBalanceSummary(BillingAdminSchema):
+    """Per-feature balance aggregation for a user."""
+
+    feature_key: str
+    active_unlimited: bool
+    total_granted: int
+    total_remaining: int
+
+
+class BillingUsageEventSnapshot(BillingAdminSchema):
+    """Usage event snapshot for admin inspection."""
+
+    usage_event_id: int
+    feature_key: str
+    quantity: int
+    usage_status: str
+    created_at: str
+    committed_at: str | None = None
+
+
+class BillingUserBillingSummaryResponse(BillingAdminSchema):
+    """Summary response for a user's billing state."""
+
+    user: BillingUserOption
+    balances: list[BillingFeatureBalanceSummary]
+    purchases: list[BillingPurchaseSnapshot]
+    recent_usage: list[BillingUsageEventSnapshot]
+
+
+class BillingCancelManualPurchaseRequest(BillingAdminSchema):
+    """Cancel admin-manual purchase payload."""
+
+    reason: str | None = Field(default=None, max_length=255)
 
 
 class BillingUpdateStripePriceChangeDisabled(BillingAdminSchema):

@@ -432,6 +432,37 @@ class TestBillingAdminRoutes:
             }
         }
 
+    def test_create_system_product_without_stripe_sync(
+        self,
+        billing_client: tuple[TestClient, FakeStripeGateway],
+    ) -> None:
+        client, fake_stripe = billing_client
+
+        response = client.post(
+            "/api/admin/billing/products",
+            json={
+                "product_code": "signup_trial_bundle",
+                "product_family": "system",
+            },
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["product_code"] == "signup_trial_bundle"
+        assert payload["name"] == "signup_trial_bundle"
+        assert payload["product_type"] == "credit_pack"
+        assert payload["stripe_product_id"] == ""
+        assert payload["stripe_price_id"] == ""
+        assert payload["config_json"] == []
+        assert fake_stripe.products == {}
+        assert fake_stripe.prices == {}
+
+        detail_response = client.get("/api/admin/billing/products/signup_trial_bundle")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["stripe_catalog"] is None
+        assert detail["grant_preview"] == []
+
     @staticmethod
     def _create_credit_pack(client: TestClient) -> None:
         response = client.post(

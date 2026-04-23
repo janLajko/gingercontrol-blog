@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from src.api.routes.blog import router as blog_router
 from src.api.routes.billing_admin import router as billing_admin_router
+from src.api.routes.billing_user_admin import router as billing_user_admin_router
 from src.api.middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from src.api.auth import verify_api_key
 from src.db.service import init_db
@@ -239,9 +240,14 @@ def create_app() -> FastAPI:
     if os.getenv("API_KEY"):
         app.include_router(blog_router, dependencies=[Depends(verify_api_key)])
         app.include_router(billing_admin_router, dependencies=[Depends(verify_api_key)])
+        app.include_router(
+            billing_user_admin_router,
+            dependencies=[Depends(verify_api_key)],
+        )
     else:
         app.include_router(blog_router)
         app.include_router(billing_admin_router)
+        app.include_router(billing_user_admin_router)
 
     logger.info(
         "Enhanced FastAPI application created",

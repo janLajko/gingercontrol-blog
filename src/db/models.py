@@ -1,10 +1,20 @@
-"""SQLAlchemy models for blog posts, categories, and billing products."""
+"""SQLAlchemy models for blog posts, categories, users, and billing entities."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import JSON
 from sqlalchemy.orm import Mapped, mapped_column
@@ -61,6 +71,21 @@ class Category(Base):
     )
 
 
+class UserRecord(Base):
+    """Persisted user accounts."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    company_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class BillingProductRecord(Base):
     """Persisted billing product configuration and Stripe bindings."""
 
@@ -96,6 +121,56 @@ class BillingProductRecord(Base):
     )
 
 
+class BillingPurchaseRecord(Base):
+    """Persisted purchase rows for Stripe and admin-manual grants."""
+
+    __tablename__ = "billing_purchase"
+    __table_args__ = (
+        CheckConstraint(
+            "purchase_type in ('subscription', 'one_time')",
+            name="ck_billing_purchase_type",
+        ),
+        CheckConstraint(
+            "status in ('pending', 'active', 'expired', 'canceled', 'consumed', 'failed')",
+            name="ck_billing_purchase_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    subject_type: Mapped[str] = mapped_column(String(32), index=True)
+    subject_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    product_code: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("billing_product.product_code"),
+        index=True,
+    )
+    purchase_type: Mapped[str] = mapped_column(String(32))
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    stripe_price_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    raw_payload: Mapped[dict] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class BillingFeaturePolicyRecord(Base):
     """Persisted billing feature policy definitions."""
 
@@ -117,3 +192,77 @@ class BillingFeaturePolicyRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+
+class BillingEntitlementGrantRecord(Base):
+    """Persisted entitlement grants bound to purchases."""
+
+    __tablename__ = "billing_entitlement_grant"
+    __table_args__ = (
+        CheckConstraint(
+            "grant_mode in ('unlimited', 'prepaid_quota', 'blocked')",
+            name="ck_billing_entitlement_grant_mode",
+        ),
+        CheckConstraint(
+            "status in ('active', 'expired', 'consumed', 'canceled')",
+            name="ck_billing_entitlement_grant_status",
+        ),
+        CheckConstraint(
+            "granted_quantity is null or granted_quantity >= 0",
+            name="ck_billing_entitlement_grant_quantity_nonnegative",
+        ),
+        CheckConstraint(
+            "remaining_quantity is null or remaining_quantity >= 0",
+            name="ck_billing_entitlement_grant_remaining_nonnegative",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    purchase_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("billing_purchase.id"),
+        index=True,
+    )
+    subject_type: Mapped[str] = mapped_column(String(32), index=True)
+    subject_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    feature_key: Mapped[str] = mapped_column(String(128), index=True)
+    grant_mode: Mapped[str] = mapped_column(String(32))
+    granted_quantity: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    remaining_quantity: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    config_json: Mapped[dict] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class BillingUsageEventRecord(Base):
+    """Persisted usage rows for balance and audit views."""
+
+    __tablename__ = "billing_usage_event"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
+    subject_type: Mapped[str] = mapped_column(String(32), index=True)
+    subject_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    feature_key: Mapped[str] = mapped_column(String(128), index=True)
+    grant_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("billing_entitlement_grant.id"),
+        nullable=True,
+        index=True,
+    )
+    resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    quantity: Mapped[int] = mapped_column(BigInteger, default=1)
+    usage_status: Mapped[str] = mapped_column(String(32), index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
