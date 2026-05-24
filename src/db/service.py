@@ -148,6 +148,7 @@ def list_blog_posts(
     category: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
+    title: Optional[str] = None,
 ) -> List[BlogPost]:
     """Return all blog posts ordered by newest first."""
     session_local = get_session_local()
@@ -161,12 +162,15 @@ def list_blog_posts(
         normalized_category = (category or "").strip()
         normalized_status = (status or "").strip()
         normalized_type = (type or "").strip()
+        normalized_title = (title or "").strip()
         if normalized_category:
             stmt = stmt.where(BlogPost.category == normalized_category)
         if normalized_status:
             stmt = stmt.where(BlogPost.status == normalized_status)
         if normalized_type:
             stmt = stmt.where(BlogPost.type == normalized_type)
+        if normalized_title:
+            stmt = stmt.where(BlogPost.title.ilike(f"%{normalized_title}%"))
         return list(session.execute(stmt).scalars().all())
     finally:
         session.close()
@@ -179,6 +183,7 @@ def list_blog_post_summaries(
     category: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
+    title: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return a paginated list of article summaries."""
     session_local = get_session_local()
@@ -197,6 +202,7 @@ def list_blog_post_summaries(
         normalized_category = (category or "").strip()
         normalized_status = (status or "").strip()
         normalized_type = (type or "").strip()
+        normalized_title = (title or "").strip()
 
         count_stmt = select(func.count()).select_from(BlogPost)
         items_stmt = (
@@ -228,6 +234,9 @@ def list_blog_post_summaries(
         if normalized_type:
             count_stmt = count_stmt.where(BlogPost.type == normalized_type)
             items_stmt = items_stmt.where(BlogPost.type == normalized_type)
+        if normalized_title:
+            count_stmt = count_stmt.where(BlogPost.title.ilike(f"%{normalized_title}%"))
+            items_stmt = items_stmt.where(BlogPost.title.ilike(f"%{normalized_title}%"))
 
         total_count = int(session.execute(count_stmt).scalar_one() or 0)
         total_pages = ceil(total_count / page_limit) if total_count > 0 else 0

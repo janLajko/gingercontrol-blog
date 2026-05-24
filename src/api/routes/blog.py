@@ -367,6 +367,10 @@ async def get_articles(
         default="article",
         description="Type filter: 'article' or 'news'. Defaults to 'article'.",
     ),
+    title: str | None = Query(
+        default=None,
+        description="Optional title filter. Performs a fuzzy match against article titles.",
+    ),
     page: int | None = Query(
         default=None,
         ge=1,
@@ -379,9 +383,9 @@ async def get_articles(
         description="Optional page size. When omitted with page, the legacy full-array response is returned.",
     ),
 ):
-    """List articles in legacy or paginated mode, optionally filtered by category."""
+    """List articles in legacy or paginated mode, optionally filtered by category and title."""
     if page is None and page_limit is None:
-        return list_blog_posts(category=category, status=status, type=type)
+        return list_blog_posts(category=category, status=status, type=type, title=title)
 
     return list_blog_post_summaries(
         page=page or 1,
@@ -389,6 +393,7 @@ async def get_articles(
         category=category,
         status=status,
         type=type,
+        title=title,
     )
 
 
