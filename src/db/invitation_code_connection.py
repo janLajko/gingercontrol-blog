@@ -10,20 +10,21 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from src.config import settings
+from src.db.connection import normalize_psycopg_conninfo
 
 
-DB_POOL_NAME = "agent-system-radar-policy"
-DB_POOL_APPLICATION_NAME = "agent-system-radar-policy"
+DB_POOL_NAME = "agent-system-invitation-code"
+DB_POOL_APPLICATION_NAME = "agent-system-invitation-code"
 
-DB_POOL_MIN_SIZE = int(os.getenv("RADAR_DB_POOL_MIN_SIZE", "1"))
-DB_POOL_MAX_SIZE = int(os.getenv("RADAR_DB_POOL_MAX_SIZE", "10"))
+DB_POOL_MIN_SIZE = int(os.getenv("INVITATION_CODE_DB_POOL_MIN_SIZE", "1"))
+DB_POOL_MAX_SIZE = int(os.getenv("INVITATION_CODE_DB_POOL_MAX_SIZE", "10"))
 DB_POOL_ACQUIRE_TIMEOUT_SECONDS = int(
-    os.getenv("RADAR_DB_POOL_ACQUIRE_TIMEOUT_SECONDS", "60")
+    os.getenv("INVITATION_CODE_DB_POOL_ACQUIRE_TIMEOUT_SECONDS", "60")
 )
 DB_POOL_CONNECT_TIMEOUT_SECONDS = int(
-    os.getenv("RADAR_DB_POOL_CONNECT_TIMEOUT_SECONDS", "10")
+    os.getenv("INVITATION_CODE_DB_POOL_CONNECT_TIMEOUT_SECONDS", "10")
 )
-DB_POOL_MAX_WAITING = int(os.getenv("RADAR_DB_POOL_MAX_WAITING", "10"))
+DB_POOL_MAX_WAITING = int(os.getenv("INVITATION_CODE_DB_POOL_MAX_WAITING", "10"))
 
 _pool: ConnectionPool[Connection[dict[str, Any]]] | None = None
 
@@ -87,23 +88,14 @@ def _create_pool() -> ConnectionPool[Connection[dict[str, Any]]]:
 
 def _require_open() -> ConnectionPool[Connection[dict[str, Any]]]:
     if _pool is None:
-        raise RuntimeError("database pool is not open")
+        raise RuntimeError("invitation code database pool is not open")
     return _pool
 
 
 def _database_url() -> str:
-    database_url = settings.RADAR_DATABASE_URL or settings.DATABASE_URL
-    if not database_url:
+    if not settings.BILLING_DATABASE_URL:
         raise RuntimeError(
-            "Set RADAR_DATABASE_URL or DATABASE_URL before opening radar policy pool"
+            "Set BILLING_DATABASE_URL before opening invitation code database pool"
         )
-    return normalize_psycopg_conninfo(database_url)
 
-
-def normalize_psycopg_conninfo(database_url: str) -> str:
-    """Convert SQLAlchemy-style psycopg URLs into psycopg-compatible URLs."""
-
-    if database_url.startswith("postgresql+psycopg://"):
-        return "postgresql://" + database_url.removeprefix("postgresql+psycopg://")
-
-    return database_url
+    return normalize_psycopg_conninfo(settings.BILLING_DATABASE_URL)

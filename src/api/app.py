@@ -14,9 +14,12 @@ from dotenv import load_dotenv
 from src.api.routes.blog import router as blog_router
 from src.api.routes.billing_admin import router as billing_admin_router
 from src.api.routes.billing_user_admin import router as billing_user_admin_router
+from src.api.routes.invitation_code import router as invitation_code_router
 from src.api.routes.radar_policy import router as radar_policy_router
 from src.api.middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from src.api.auth import verify_api_key
+from src.db.invitation_code_connection import close_pool as close_invitation_code_pool
+from src.db.invitation_code_connection import open_pool as open_invitation_code_pool
 from src.db.connection import close_pool as close_radar_policy_pool
 from src.db.connection import open_pool as open_radar_policy_pool
 from src.db.service import init_db
@@ -71,6 +74,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error("Failed to open radar policy database pool", error=str(e))
 
+    try:
+        open_invitation_code_pool()
+        logger.info("Invitation code database pool opened")
+    except Exception as e:
+        logger.error("Failed to open invitation code database pool", error=str(e))
+
     # Pre-compile the blog generation graph
     try:
         from src.agents.graph import get_blog_generation_graph
@@ -92,6 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down Enhanced Gemini Blog Agent service")
+    close_invitation_code_pool()
     close_radar_policy_pool()
     
     # Log final statistics
@@ -254,11 +264,16 @@ def create_app() -> FastAPI:
             billing_user_admin_router,
             dependencies=[Depends(verify_api_key)],
         )
+        app.include_router(
+            invitation_code_router,
+            dependencies=[Depends(verify_api_key)],
+        )
         app.include_router(radar_policy_router, dependencies=[Depends(verify_api_key)])
     else:
         app.include_router(blog_router)
         app.include_router(billing_admin_router)
         app.include_router(billing_user_admin_router)
+        app.include_router(invitation_code_router)
         app.include_router(radar_policy_router)
 
     logger.info(
