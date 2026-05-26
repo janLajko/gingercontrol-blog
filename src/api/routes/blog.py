@@ -14,6 +14,8 @@ from src.schemas.models import (
     BlogCustomization,
     GeneratedArticle,
     ArticleAuthorDetails,
+    ArticleChatReplyRequest,
+    ArticleChatReplyResponse,
     CategoryCreate,
     CategoryUpdate,
     CategoryResponse,
@@ -25,6 +27,7 @@ from src.schemas.models import (
 from src.api.auth import verify_api_key
 from src.agents.graph import get_blog_generation_graph
 from src.config.settings import GCS_CMS_IMAGE_PREFIX, GCS_CMS_MEDIA_PREFIX
+from src.tools.openai_blog_client import get_openai_blog_client
 from src.db.service import (
     save_blog_post,
     list_blog_posts,
@@ -311,6 +314,72 @@ async def send_webhook_notification(callback_url: str, response_data: dict, run_
             run_id=run_id,
             error=str(e)
         )
+
+
+@router.post(
+    "/article-chat/reply",
+    response_model=ArticleChatReplyResponse,
+    summary="Create or revise an article through stateless chat",
+    description=(
+        "Create a new article or revise the supplied article using the latest "
+        "chat instruction. The backend does not persist chat messages or "
+        "intermediate article state."
+    ),
+)
+async def article_chat_reply(request: ArticleChatReplyRequest) -> ArticleChatReplyResponse:
+    """Create or revise an article from frontend-managed chat context."""
+    start_time = time.time()
+    article_payload = request.article.model_dump() if request.article else None
+    messages_payload = [message.model_dump() for message in request.messages]
+
+    logger.info(
+        "Article chat request received",
+        mode="revise"
+        if article_payload and str(article_payload.get("body", "")).strip()
+        else "create",
+        message_length=len(request.message),
+        history_count=len(messages_payload),
+    )
+
+    try:
+        client = await get_openai_blog_client()
+        result = await client.chat_article(
+            article=article_payload,
+            messages=messages_payload,
+            message=request.message.strip(),
+            customization=request.customization,
+            metadata=request.metadata,
+            source_details=request.source_details,
+        )
+
+        response = ArticleChatReplyResponse(
+            assistant_message=result["assistant_message"],
+            article=GeneratedArticle(**result["article"]),
+            status="completed",
+            metadata={
+                "model_used": result.get("model_used", ""),
+                "sources_used": result.get("sources_used", []),
+                "source_details": result.get("source_details", []),
+                "processing_time_seconds": round(time.time() - start_time, 2),
+            },
+        )
+
+        logger.info(
+            "Article chat request completed",
+            title=response.article.title,
+            content_length=len(response.article.body),
+            processing_time=response.metadata["processing_time_seconds"],
+        )
+        return response
+    except Exception as exc:
+        logger.error(
+            "Article chat request failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            processing_time=round(time.time() - start_time, 2),
+        )
+        raise HTTPException(status_code=500, detail=f"Article chat failed: {str(exc)}")
+
 
 # Legacy endpoint for backward compatibility
 @router.post(

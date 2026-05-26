@@ -200,6 +200,53 @@ class GeneratedArticle(BaseModel):
     body: str = Field(..., description="Markdown article body")
 
 
+class ArticleChatMessage(BaseModel):
+    """Single stateless article chat message supplied by the frontend."""
+
+    role: Literal["user", "assistant", "system"] = Field(..., description="Message role")
+    content: str = Field(..., min_length=1, description="Message content")
+
+
+class ArticleChatReplyRequest(BaseModel):
+    """Stateless article chat request.
+
+    The backend does not persist sessions or intermediate messages. The caller sends
+    the current article and visible conversation context on each request.
+    """
+
+    article: Optional[GeneratedArticle] = Field(
+        default=None,
+        description="Current article draft. Empty or omitted means create a new article.",
+    )
+    messages: List[ArticleChatMessage] = Field(
+        default_factory=list,
+        max_items=30,
+        description="Recent conversation messages maintained by the frontend",
+    )
+    message: str = Field(..., min_length=1, max_length=4000, description="Latest user instruction")
+    customization: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional generation/editing preferences",
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional article metadata such as author/category/cover image",
+    )
+    source_details: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Known source details from the current article generation",
+    )
+
+
+class ArticleChatReplyResponse(BaseModel):
+    """Stateless article chat response with the updated article draft."""
+
+    assistant_message: str = Field(..., description="Short assistant reply for the chat UI")
+    article: GeneratedArticle = Field(..., description="Created or revised article")
+    status: Literal["completed"] = Field(default="completed")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ArticleAuthorDetails(BaseModel):
     """Author and presentation metadata for a generated article."""
 
