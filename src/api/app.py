@@ -27,6 +27,7 @@ from src.utils.logger import configure_logging, get_logger
 from src.schemas.models import ErrorDetail
 from src.schemas.billing_admin import BillingAdminErrorDetail, BillingAdminErrorResponse
 from src.service.billing_admin_product_api_client import BillingAdminApiException
+from src.tools.openai_blog_client import get_openai_blog_client
 from langsmith import Client as LangSmithClient
 from fastapi.encoders import jsonable_encoder
 # Load environment variables
@@ -87,6 +88,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Blog generation graph pre-compiled successfully")
     except Exception as e:
         logger.error("Failed to pre-compile blog generation graph", error=str(e))
+
+    try:
+        openai_blog_client = await get_openai_blog_client()
+        openai_blog_client.warm_up()
+        logger.info("OpenAI blog client warmed up successfully")
+    except Exception as e:
+        logger.error("Failed to warm up OpenAI blog client", error=str(e))
 
     # Initialize usage tracking
     app.state.usage_stats = {

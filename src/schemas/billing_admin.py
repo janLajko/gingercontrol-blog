@@ -25,6 +25,9 @@ BillingPurchaseStatus = Literal[
     "pending", "active", "expired", "canceled", "consumed", "failed"
 ]
 BillingGrantStatus = Literal["active", "expired", "consumed", "canceled"]
+OpenApiClientStatus = Literal["active", "disabled"]
+OpenApiKeyStatus = Literal["active", "revoked"]
+OpenApiKeyScope = Literal["test", "live"]
 
 
 class BillingAdminErrorDetail(BillingAdminSchema):
@@ -64,6 +67,7 @@ BillingProductConfigEntry = Annotated[
     BillingProductConfigUnlimited | BillingProductConfigPrepaidQuota,
     Field(discriminator="grant_mode"),
 ]
+
 
 def _normalize_config_json_array(value):
     if isinstance(value, list):
@@ -170,6 +174,71 @@ class BillingFeaturePolicyListResponse(BillingAdminSchema):
     """List response for billing feature policies."""
 
     items: list[BillingFeaturePolicy]
+
+
+class OpenApiClient(BillingAdminSchema):
+    """OpenAPI client row."""
+
+    client_id: int
+    client_code: str
+    name: str
+    status: OpenApiClientStatus
+    created_at: str
+    updated_at: str
+
+
+class OpenApiClientListResponse(BillingAdminSchema):
+    """Paginated OpenAPI client list response."""
+
+    items: list[OpenApiClient]
+    page: int = Field(..., ge=1)
+    page_size: int = Field(..., ge=1, le=100)
+    total: int = Field(..., ge=0)
+
+
+class OpenApiKey(BillingAdminSchema):
+    """OpenAPI key metadata row. The plaintext key is not included here."""
+
+    key_id: int
+    client_id: int
+    client_code: str
+    client_name: str
+    client_status: OpenApiClientStatus
+    key_prefix: str
+    secret_version: str
+    status: OpenApiKeyStatus
+    expires_at: str | None = None
+    rpm_limit: int
+    burst_limit: int
+    created_at: str
+    updated_at: str
+
+
+class OpenApiKeyListResponse(BillingAdminSchema):
+    """Paginated OpenAPI key list response."""
+
+    items: list[OpenApiKey]
+    page: int = Field(..., ge=1)
+    page_size: int = Field(..., ge=1, le=100)
+    total: int = Field(..., ge=0)
+
+
+class OpenApiKeyCreateRequest(BillingAdminSchema):
+    """Create an OpenAPI key for an existing t_openapi_client.id."""
+
+    client_id: int = Field(..., gt=0)
+    key_scope: OpenApiKeyScope = "test"
+    key: str | None = Field(default=None, min_length=21)
+    rpm_limit: int = Field(default=600, gt=0)
+    burst_limit: int = Field(default=150, gt=0)
+    expires_at: datetime | None = None
+    secret_version: str = Field(default="v1", min_length=1, max_length=32)
+
+
+class OpenApiKeyCreateResponse(OpenApiKey):
+    """Created OpenAPI key response with one-time plaintext API key."""
+
+    api_key: str
 
 
 class BillingCreateStripePriceRecurring(BillingAdminSchema):

@@ -17,6 +17,8 @@ from src.db.models import (
     BillingUsageEventRecord,
     BlogPost,
     Category,
+    OpenApiClientRecord,
+    OpenApiKeyRecord,
     UserRecord,
 )
 from src.utils.logger import get_logger
@@ -56,19 +58,27 @@ def _prepare_blog_post_payload(
     normalized["slug"] = _normalize_optional_string(normalized.get("slug")) or (
         existing.slug if existing is not None else None
     )
-    normalized["description"] = _normalize_optional_string(normalized.get("description")) or (
-        existing.description if existing is not None else None
-    )
+    normalized["description"] = _normalize_optional_string(
+        normalized.get("description")
+    ) or (existing.description if existing is not None else None)
     normalized["body"] = _normalize_optional_string(normalized.get("body")) or (
         existing.body if existing is not None else None
     )
-    normalized["author_name"] = _normalize_optional_string(normalized.get("author_name"))
-    normalized["author_avatar"] = _normalize_optional_string(normalized.get("author_avatar"))
+    normalized["author_name"] = _normalize_optional_string(
+        normalized.get("author_name")
+    )
+    normalized["author_avatar"] = _normalize_optional_string(
+        normalized.get("author_avatar")
+    )
     normalized["category"] = _normalize_optional_string(normalized.get("category"))
-    normalized["cover_image"] = _normalize_optional_string(normalized.get("cover_image"))
+    normalized["cover_image"] = _normalize_optional_string(
+        normalized.get("cover_image")
+    )
     normalized["user_id"] = _normalize_optional_string(normalized.get("user_id"))
     normalized["model_used"] = _normalize_optional_string(normalized.get("model_used"))
-    normalized["error_message"] = _normalize_optional_string(normalized.get("error_message"))
+    normalized["error_message"] = _normalize_optional_string(
+        normalized.get("error_message")
+    )
     normalized_status = _normalize_optional_string(normalized.get("status"))
 
     normalized["keyword"] = keyword or title
@@ -116,6 +126,8 @@ def init_db() -> None:
                 BillingPurchaseRecord.__table__,
                 BillingEntitlementGrantRecord.__table__,
                 BillingUsageEventRecord.__table__,
+                OpenApiClientRecord.__table__,
+                OpenApiKeyRecord.__table__,
             ],
         )
         logger.info("Billing database tables initialized")
@@ -134,7 +146,9 @@ def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:
         session.add(blog_post)
         session.commit()
         session.refresh(blog_post)
-        logger.info("Blog post persisted", post_id=blog_post.id, run_id=blog_post.run_id)
+        logger.info(
+            "Blog post persisted", post_id=blog_post.id, run_id=blog_post.run_id
+        )
         return blog_post.id
     except Exception as exc:
         session.rollback()
@@ -356,7 +370,9 @@ def delete_blog_post(post_id: int) -> bool:
         session.close()
 
 
-def _serialize_category_with_count(category: Category, article_count: int) -> Dict[str, Any]:
+def _serialize_category_with_count(
+    category: Category, article_count: int
+) -> Dict[str, Any]:
     """Convert a category row plus article count into a response payload."""
     return {
         "id": category.id,

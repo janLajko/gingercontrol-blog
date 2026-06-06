@@ -266,3 +266,73 @@ class BillingUsageEventRecord(Base):
     )
     committed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OpenApiClientRecord(Base):
+    """Persisted OpenAPI client records."""
+
+    __tablename__ = "t_openapi_client"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('active', 'disabled')",
+            name="chk_t_openapi_client_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    client_code: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class OpenApiKeyRecord(Base):
+    """Persisted OpenAPI key metadata and encrypted key copy."""
+
+    __tablename__ = "t_openapi_key"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('active', 'revoked')",
+            name="chk_t_openapi_key_status",
+        ),
+        CheckConstraint("rpm_limit > 0", name="chk_t_openapi_key_rpm_limit"),
+        CheckConstraint("burst_limit > 0", name="chk_t_openapi_key_burst_limit"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    client_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("t_openapi_client.id"),
+        index=True,
+    )
+    key_prefix: Mapped[str] = mapped_column(String(64))
+    key_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    encrypted_key_ciphertext: Mapped[str] = mapped_column(Text)
+    encrypted_key_nonce: Mapped[str] = mapped_column(String(128))
+    encrypted_key_algorithm: Mapped[str] = mapped_column(String(32))
+    secret_version: Mapped[str] = mapped_column(String(32), default="v1")
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rpm_limit: Mapped[int] = mapped_column(Integer, default=600)
+    burst_limit: Mapped[int] = mapped_column(Integer, default=150)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )

@@ -17,6 +17,17 @@ from src.schemas.billing_admin import (
     BillingSyncStripeRequest,
     BillingSyncStripeResponse,
     BillingUpdateProductRequest,
+    OpenApiClientListResponse,
+    OpenApiClientStatus,
+    OpenApiKey,
+    OpenApiKeyCreateRequest,
+    OpenApiKeyCreateResponse,
+    OpenApiKeyListResponse,
+    OpenApiKeyStatus,
+)
+from src.service.billing_openapi_key_admin_client import (
+    BillingOpenApiKeyAdminClient,
+    get_billing_openapi_key_admin_client,
 )
 from src.service.billing_admin_product_api_client import (
     BillingAdminProductApiClient,
@@ -40,6 +51,93 @@ async def list_billing_feature_policies(
     """GET /api/admin/billing/feature-policies."""
 
     return await api_client.list_feature_policies()
+
+
+@router.get(
+    "/openapi-clients",
+    response_model=OpenApiClientListResponse,
+    summary="List OpenAPI clients",
+)
+async def list_openapi_clients(
+    status: OpenApiClientStatus | None = Query(default=None),
+    keyword: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    api_client: Annotated[
+        BillingOpenApiKeyAdminClient,
+        Depends(get_billing_openapi_key_admin_client),
+    ] = ...,
+) -> OpenApiClientListResponse:
+    """GET /api/admin/billing/openapi-clients."""
+
+    return await api_client.list_clients(
+        status=status,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get(
+    "/openapi-keys",
+    response_model=OpenApiKeyListResponse,
+    summary="List OpenAPI keys",
+)
+async def list_openapi_keys(
+    client_id: int | None = Query(default=None, ge=1),
+    status: OpenApiKeyStatus | None = Query(default=None),
+    keyword: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    api_client: Annotated[
+        BillingOpenApiKeyAdminClient,
+        Depends(get_billing_openapi_key_admin_client),
+    ] = ...,
+) -> OpenApiKeyListResponse:
+    """GET /api/admin/billing/openapi-keys."""
+
+    return await api_client.list_keys(
+        client_id=client_id,
+        status=status,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post(
+    "/openapi-keys",
+    response_model=OpenApiKeyCreateResponse,
+    status_code=201,
+    summary="Create OpenAPI key",
+)
+async def create_openapi_key(
+    payload: OpenApiKeyCreateRequest,
+    api_client: Annotated[
+        BillingOpenApiKeyAdminClient,
+        Depends(get_billing_openapi_key_admin_client),
+    ] = ...,
+) -> OpenApiKeyCreateResponse:
+    """POST /api/admin/billing/openapi-keys."""
+
+    return await api_client.create_key(payload)
+
+
+@router.delete(
+    "/openapi-keys/{key_id}",
+    response_model=OpenApiKey,
+    summary="Revoke OpenAPI key",
+)
+async def revoke_openapi_key(
+    key_id: int,
+    api_client: Annotated[
+        BillingOpenApiKeyAdminClient,
+        Depends(get_billing_openapi_key_admin_client),
+    ] = ...,
+) -> OpenApiKey:
+    """DELETE /api/admin/billing/openapi-keys/{key_id} revokes the key."""
+
+    return await api_client.revoke_key(key_id)
 
 
 @router.get(

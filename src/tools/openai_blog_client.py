@@ -182,6 +182,10 @@ class OpenAIBlogClient:
             self._client = AsyncOpenAI(api_key=self.config.api_key)
         return self._client
 
+    def warm_up(self) -> None:
+        """Initialize the SDK client before the first user request."""
+        self._get_client()
+
     async def generate_blog(
         self,
         *,
