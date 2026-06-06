@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from src.config import settings
-from src.db.base import get_billing_session_local
+from src.db.base import get_openapi_session_local
 from src.db.models import OpenApiClientRecord, OpenApiKeyRecord
 from src.schemas.billing_admin import (
     OpenApiClient,
@@ -47,7 +47,7 @@ class BillingOpenApiKeyAdminClient:
         *,
         session_local_factory: Callable[[], Any] | None = None,
     ) -> None:
-        self._session_local_factory = session_local_factory or get_billing_session_local
+        self._session_local_factory = session_local_factory or get_openapi_session_local
 
     async def list_clients(
         self,
@@ -276,7 +276,7 @@ class BillingOpenApiKeyAdminClient:
             raise BillingAdminApiException(
                 status_code=500,
                 code="database_not_configured",
-                message="BILLING_DATABASE_URL is not configured",
+                message="OPENAPI_DATABASE is not configured",
             )
         return session_local()
 

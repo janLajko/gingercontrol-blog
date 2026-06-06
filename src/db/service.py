@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select
 
-from src.db.base import Base, get_billing_engine, get_engine, get_session_local
+from src.db.base import (
+    Base,
+    get_billing_engine,
+    get_engine,
+    get_openapi_engine,
+    get_session_local,
+)
 from src.db.models import (
     BillingEntitlementGrantRecord,
     BillingFeaturePolicyRecord,
@@ -126,11 +132,24 @@ def init_db() -> None:
                 BillingPurchaseRecord.__table__,
                 BillingEntitlementGrantRecord.__table__,
                 BillingUsageEventRecord.__table__,
+            ],
+        )
+        logger.info("Billing database tables initialized")
+
+    openapi_engine = get_openapi_engine()
+    if openapi_engine is None:
+        logger.warning(
+            "OPENAPI_DATABASE is not configured. Skipping OpenAPI database init."
+        )
+    else:
+        Base.metadata.create_all(
+            bind=openapi_engine,
+            tables=[
                 OpenApiClientRecord.__table__,
                 OpenApiKeyRecord.__table__,
             ],
         )
-        logger.info("Billing database tables initialized")
+        logger.info("OpenAPI database tables initialized")
 
 
 def save_blog_post(payload: Dict[str, Any]) -> Optional[int]:

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from src.api.app import create_app
 from src.config import settings
 from src.db import base as db_base
-from src.db.base import get_billing_session_local
+from src.db.base import get_openapi_session_local
 from src.db.models import OpenApiClientRecord, OpenApiKeyRecord
 from src.db.service import init_db
 
@@ -27,10 +27,12 @@ def openapi_key_client(
 
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("BILLING_DATABASE_URL", database_url)
+    monkeypatch.setenv("OPENAPI_DATABASE", database_url)
     monkeypatch.setenv("OPENAPI_KEY_PEPPER", "test-pepper")
     monkeypatch.setenv("OPENAPI_KEY_ENCRYPTION_KEY", encryption_key)
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
     monkeypatch.setattr(settings, "BILLING_DATABASE_URL", database_url)
+    monkeypatch.setattr(settings, "OPENAPI_DATABASE", database_url)
     monkeypatch.setattr(settings, "OPENAPI_KEY_PEPPER", "test-pepper")
     monkeypatch.setattr(settings, "OPENAPI_KEY_ENCRYPTION_KEY", encryption_key)
 
@@ -38,9 +40,11 @@ def openapi_key_client(
     db_base._session_local = None
     db_base._billing_engine = None
     db_base._billing_session_local = None
+    db_base._openapi_engine = None
+    db_base._openapi_session_local = None
     init_db()
 
-    session_local = get_billing_session_local()
+    session_local = get_openapi_session_local()
     assert session_local is not None
     session = session_local()
     try:
@@ -65,6 +69,8 @@ def openapi_key_client(
         db_base._session_local = None
         db_base._billing_engine = None
         db_base._billing_session_local = None
+        db_base._openapi_engine = None
+        db_base._openapi_session_local = None
 
 
 def test_create_openapi_key_for_existing_client(openapi_key_client: TestClient) -> None:
@@ -96,7 +102,7 @@ def test_create_openapi_key_for_existing_client(openapi_key_client: TestClient) 
     assert keys[0]["key_prefix"] == created["key_prefix"]
     assert "api_key" not in keys[0]
 
-    session_local = get_billing_session_local()
+    session_local = get_openapi_session_local()
     assert session_local is not None
     session = session_local()
     try:

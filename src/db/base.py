@@ -16,6 +16,8 @@ _engine: Optional[Engine] = None
 _session_local = None
 _billing_engine: Optional[Engine] = None
 _billing_session_local = None
+_openapi_engine: Optional[Engine] = None
+_openapi_session_local = None
 
 
 def get_engine() -> Optional[Engine]:
@@ -71,3 +73,33 @@ def get_billing_session_local():
             expire_on_commit=False,
         )
     return _billing_session_local
+
+
+def get_openapi_engine() -> Optional[Engine]:
+    """Return a singleton SQLAlchemy engine for OpenAPI client/key persistence."""
+
+    global _openapi_engine
+    if _openapi_engine is None and settings.OPENAPI_DATABASE:
+        _openapi_engine = create_engine(
+            settings.OPENAPI_DATABASE,
+            future=True,
+            pool_pre_ping=True,
+        )
+    return _openapi_engine
+
+
+def get_openapi_session_local():
+    """Return a configured session factory for OpenAPI client/key persistence."""
+
+    global _openapi_session_local
+    engine = get_openapi_engine()
+    if engine is None:
+        return None
+    if _openapi_session_local is None:
+        _openapi_session_local = sessionmaker(
+            bind=engine,
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+    return _openapi_session_local
