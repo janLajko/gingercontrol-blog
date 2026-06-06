@@ -20,11 +20,25 @@ _openapi_engine: Optional[Engine] = None
 _openapi_session_local = None
 
 
+def _normalize_sqlalchemy_url(database_url: str) -> str:
+    """Use psycopg3 for SQLAlchemy when a generic PostgreSQL URL is provided."""
+
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgresql://")
+    if database_url.startswith("postgres://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgres://")
+    return database_url
+
+
 def get_engine() -> Optional[Engine]:
     """Return a singleton SQLAlchemy engine when DATABASE_URL is configured."""
     global _engine
     if _engine is None and settings.DATABASE_URL:
-        _engine = create_engine(settings.DATABASE_URL, future=True, pool_pre_ping=True)
+        _engine = create_engine(
+            _normalize_sqlalchemy_url(settings.DATABASE_URL),
+            future=True,
+            pool_pre_ping=True,
+        )
     return _engine
 
 
@@ -51,7 +65,7 @@ def get_billing_engine() -> Optional[Engine]:
     billing_database_url = settings.BILLING_DATABASE_URL or settings.DATABASE_URL
     if _billing_engine is None and billing_database_url:
         _billing_engine = create_engine(
-            billing_database_url,
+            _normalize_sqlalchemy_url(billing_database_url),
             future=True,
             pool_pre_ping=True,
         )
@@ -81,7 +95,7 @@ def get_openapi_engine() -> Optional[Engine]:
     global _openapi_engine
     if _openapi_engine is None and settings.OPENAPI_DATABASE:
         _openapi_engine = create_engine(
-            settings.OPENAPI_DATABASE,
+            _normalize_sqlalchemy_url(settings.OPENAPI_DATABASE),
             future=True,
             pool_pre_ping=True,
         )
