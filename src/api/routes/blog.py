@@ -43,6 +43,7 @@ from src.db.service import (
     delete_category,
 )
 from src.service.gcs_upload_service import GcsUploadService
+from src.service.product_cta_service import append_product_cta
 from src.utils.logger import get_logger
 from src.utils.seo import calculate_keyword_density, normalize_seo_scores
 from datetime import datetime
@@ -128,12 +129,23 @@ async def generate_enhanced_blog(
 
         # Calculate additional metrics
         article_payload = result.get("article") or {}
+        article_payload = {
+            "slug": article_payload.get("slug", ""),
+            "title": article_payload.get("title", ""),
+            "description": article_payload.get("description", ""),
+            "tags": article_payload.get("tags", []),
+            "body": article_payload.get("body", result["final_blog"]),
+        }
+        article_payload, product_cta = append_product_cta(
+            article_payload,
+            keyword=request.keyword,
+        )
         article = GeneratedArticle(
             slug=article_payload.get("slug", ""),
             title=article_payload.get("title", ""),
             description=article_payload.get("description", ""),
             tags=article_payload.get("tags", []),
-            body=article_payload.get("body", result["final_blog"]),
+            body=article_payload.get("body", ""),
         )
         word_count = len(article.body.split()) if article.body else 0
         reading_time = max(1, word_count // 200)  # ~200 words per minute
@@ -183,6 +195,10 @@ async def generate_enhanced_blog(
         )
 
         post_id = None
+        persisted_customization = customization.model_dump()
+        if product_cta is not None:
+            persisted_customization["product_cta"] = product_cta
+
         try:
             post_id = save_blog_post(
                 {
@@ -198,7 +214,7 @@ async def generate_enhanced_blog(
                     "category": request.category,
                     "cover_image": request.cover_image,
                     "user_id": request.user_id,
-                    "customization": customization.model_dump(),
+                    "customization": persisted_customization,
                     "sources_used": result.get("sources_used", []),
                     "source_details": result.get("source_details", []),
                     "seo_scores": normalized_scores,

@@ -12,12 +12,12 @@ def mock_graph_result(success: bool = True):
         "success": success,
         "article": {
             "slug": "test-post",
-            "title": "Test Post",
-            "description": "A valid meta description for testing.",
-            "tags": ["test", "product"],
-            "body": "# Test Post\n\nBody content.\n\n## Sources\n\n- [Source](https://example.com/source-1)",
+            "title": "ECCN Export License Guide",
+            "description": "A valid meta description for BIS export license testing.",
+            "tags": ["ECCN", "export control"],
+            "body": "# ECCN Export License Guide\n\nBody content.\n\n## Sources\n\n- [Source](https://example.com/source-1)",
         },
-        "final_blog": "# Test Post\n\nBody content.\n\n## Sources\n\n- [Source](https://example.com/source-1)",
+        "final_blog": "# ECCN Export License Guide\n\nBody content.\n\n## Sources\n\n- [Source](https://example.com/source-1)",
         "seo_scores": {
             "title_score": 80,
             "meta_description_score": 80,
@@ -80,6 +80,14 @@ class TestBlogGenerationEndpoint:
         data = response.json()
         assert data["success"] is True
         assert data["article"]["slug"] == "test-post"
+        assert (
+            "https://gingercontrol.com/products/export-control"
+            in data["article"]["body"]
+        )
+        assert (
+            "https://gingercontrol.com/products/export-control"
+            in data["final_blog"]
+        )
         assert data["seo_scores"]["final_score"] > 0
         assert data["metadata"]["model_used"] == "gpt-5-mini"
 
