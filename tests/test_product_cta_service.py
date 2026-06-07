@@ -126,3 +126,26 @@ def test_append_product_cta_adds_matched_link():
     assert metadata is not None
     assert metadata["appended"] is True
     assert metadata["product_id"] == "export_control"
+
+
+def test_append_product_cta_inserts_before_references():
+    article = {
+        "title": "Duty Tax API Pricing Compared",
+        "description": "API integration workflow.",
+        "tags": ["API"],
+        "body": (
+            "## What is the best duty API?\n\n"
+            "API integration helps teams scale duty checks.\n\n"
+            "## References\n\n"
+            "[REF 1] Source\n"
+        ),
+    }
+
+    updated_article, metadata = append_product_cta(article, keyword="duty tax API")
+
+    assert metadata is not None
+    assert metadata["product_id"] == "openapi"
+    assert (
+        updated_article["body"].index("https://gingercontrol.com/products/openapi")
+        < updated_article["body"].index("## References")
+    )

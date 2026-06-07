@@ -207,7 +207,10 @@ def append_product_cta(
         rule = _rule_by_product_id(match["product_id"])
 
     updated_article = dict(article)
-    updated_article["body"] = f"{body}\n\n{rule.cta.format(url=rule.url)}"
+    updated_article["body"] = insert_cta_before_references(
+        body,
+        rule.cta.format(url=rule.url),
+    )
 
     metadata = {
         "appended": True,
@@ -279,6 +282,18 @@ def find_tail_product_url(body: str, *, tail_chars: int = 4000) -> str | None:
         if normalized:
             urls.append(normalized)
     return urls[-1] if urls else None
+
+
+def insert_cta_before_references(body: str, cta: str) -> str:
+    """Insert CTA before a References section, falling back to the end."""
+
+    references_match = re.search(r"(?im)^##\s+References\s*$", body)
+    if not references_match:
+        return f"{body.rstrip()}\n\n{cta}"
+
+    before = body[: references_match.start()].rstrip()
+    after = body[references_match.start() :].lstrip()
+    return f"{before}\n\n{cta}\n\n{after}"
 
 
 def normalize_product_url(raw_url: str) -> str | None:
