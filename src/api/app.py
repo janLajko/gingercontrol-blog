@@ -103,6 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "failed_requests": 0,
         "rate_limit_hits": 0
     }
+    app.state.article_chat_jobs = {}
 
     logger.info("Enhanced service startup completed")
     yield

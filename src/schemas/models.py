@@ -247,6 +247,32 @@ class ArticleChatReplyResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ArticleChatJobCreateResponse(BaseModel):
+    """Response returned immediately after an article chat job is submitted."""
+
+    job_id: str = Field(..., description="Article chat job identifier")
+    status: Literal["queued", "running", "completed", "failed"] = Field(
+        default="queued",
+        description="Current job status",
+    )
+
+
+class ArticleChatJobStatusResponse(BaseModel):
+    """Current status for an asynchronous article chat job."""
+
+    job_id: str = Field(..., description="Article chat job identifier")
+    status: Literal["queued", "running", "completed", "failed"] = Field(
+        ...,
+        description="Current job status",
+    )
+    result: Optional[ArticleChatReplyResponse] = Field(
+        default=None,
+        description="Completed article chat result",
+    )
+    error: Optional[str] = Field(default=None, description="Failure message")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ArticleAuthorDetails(BaseModel):
     """Author and presentation metadata for a generated article."""
 

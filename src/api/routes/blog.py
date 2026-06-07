@@ -3,7 +3,7 @@
 import uuid
 import time
 from typing import Dict, Any, List
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, File, UploadFile, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, File, UploadFile, Query, status
 from fastapi.responses import JSONResponse
 
 from src.schemas.models import (
@@ -16,6 +16,8 @@ from src.schemas.models import (
     ArticleAuthorDetails,
     ArticleChatReplyRequest,
     ArticleChatReplyResponse,
+    ArticleChatJobCreateResponse,
+    ArticleChatJobStatusResponse,
     CategoryCreate,
     CategoryUpdate,
     CategoryResponse,
@@ -51,6 +53,99 @@ from datetime import datetime
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["blog"])
+
+
+async def _execute_article_chat_request(
+    request: ArticleChatReplyRequest,
+) -> ArticleChatReplyResponse:
+    """Run an article chat request and return the completed response."""
+    start_time = time.time()
+    article_payload = request.article.model_dump() if request.article else None
+    messages_payload = [message.model_dump() for message in request.messages]
+
+    client = await get_openai_blog_client()
+    result = await client.chat_article(
+        article=article_payload,
+        messages=messages_payload,
+        message=request.message.strip(),
+        customization=request.customization,
+        metadata=request.metadata,
+        source_details=request.source_details,
+    )
+    cta_keyword = (
+        str(request.metadata.get("keyword") or "").strip()
+        or (str(article_payload.get("title") or "").strip() if article_payload else "")
+        or request.message.strip()
+    )
+    updated_article, product_cta = append_product_cta(
+        result["article"],
+        keyword=cta_keyword,
+    )
+
+    return ArticleChatReplyResponse(
+        assistant_message=result["assistant_message"],
+        article=GeneratedArticle(**updated_article),
+        status="completed",
+        metadata={
+            "model_used": result.get("model_used", ""),
+            "sources_used": result.get("sources_used", []),
+            "source_details": result.get("source_details", []),
+            "processing_time_seconds": round(time.time() - start_time, 2),
+            "product_cta": product_cta,
+        },
+    )
+
+
+async def _run_article_chat_job(
+    *,
+    job_id: str,
+    request: ArticleChatReplyRequest,
+    app_state: Any,
+) -> None:
+    """Execute an article chat job and update the in-memory job store."""
+    jobs = getattr(app_state, "article_chat_jobs", None)
+    if jobs is None:
+        logger.error("Article chat job store is unavailable", job_id=job_id)
+        return
+
+    jobs[job_id].update(
+        {
+            "status": "running",
+            "started_at": datetime.utcnow().isoformat(),
+        }
+    )
+
+    try:
+        response = await _execute_article_chat_request(request)
+        jobs[job_id].update(
+            {
+                "status": "completed",
+                "result": response.model_dump(),
+                "completed_at": datetime.utcnow().isoformat(),
+            }
+        )
+
+        logger.info(
+            "Article chat job completed",
+            job_id=job_id,
+            title=response.article.title,
+            content_length=len(response.article.body),
+            processing_time=response.metadata["processing_time_seconds"],
+        )
+    except Exception as exc:
+        jobs[job_id].update(
+            {
+                "status": "failed",
+                "error": str(exc),
+                "completed_at": datetime.utcnow().isoformat(),
+            }
+        )
+        logger.error(
+            "Article chat job failed",
+            job_id=job_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 @router.post(
     "/generate-blog",
@@ -334,22 +429,31 @@ async def send_webhook_notification(callback_url: str, response_data: dict, run_
 
 @router.post(
     "/article-chat/reply",
-    response_model=ArticleChatReplyResponse,
+    response_model=ArticleChatJobCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Create or revise an article through stateless chat",
     description=(
-        "Create a new article or revise the supplied article using the latest "
-        "chat instruction. The backend does not persist chat messages or "
-        "intermediate article state."
+        "Submit a background job to create a new article or revise the supplied "
+        "article using the latest chat instruction."
     ),
 )
-async def article_chat_reply(request: ArticleChatReplyRequest) -> ArticleChatReplyResponse:
-    """Create or revise an article from frontend-managed chat context."""
-    start_time = time.time()
+async def article_chat_reply(
+    request: ArticleChatReplyRequest,
+    background_tasks: BackgroundTasks,
+    fastapi_request: Request,
+) -> ArticleChatJobCreateResponse:
+    """Submit an article chat job and return immediately."""
+    job_id = str(uuid.uuid4())
     article_payload = request.article.model_dump() if request.article else None
     messages_payload = [message.model_dump() for message in request.messages]
+    jobs = getattr(fastapi_request.app.state, "article_chat_jobs", None)
+    if jobs is None:
+        fastapi_request.app.state.article_chat_jobs = {}
+        jobs = fastapi_request.app.state.article_chat_jobs
 
     logger.info(
-        "Article chat request received",
+        "Article chat job submitted",
+        job_id=job_id,
         mode="revise"
         if article_payload and str(article_payload.get("body", "")).strip()
         else "create",
@@ -357,44 +461,53 @@ async def article_chat_reply(request: ArticleChatReplyRequest) -> ArticleChatRep
         history_count=len(messages_payload),
     )
 
-    try:
-        client = await get_openai_blog_client()
-        result = await client.chat_article(
-            article=article_payload,
-            messages=messages_payload,
-            message=request.message.strip(),
-            customization=request.customization,
-            metadata=request.metadata,
-            source_details=request.source_details,
-        )
+    jobs[job_id] = {
+        "status": "queued",
+        "submitted_at": datetime.utcnow().isoformat(),
+        "result": None,
+        "error": None,
+    }
+    background_tasks.add_task(
+        _run_article_chat_job,
+        job_id=job_id,
+        request=request,
+        app_state=fastapi_request.app.state,
+    )
 
-        response = ArticleChatReplyResponse(
-            assistant_message=result["assistant_message"],
-            article=GeneratedArticle(**result["article"]),
-            status="completed",
-            metadata={
-                "model_used": result.get("model_used", ""),
-                "sources_used": result.get("sources_used", []),
-                "source_details": result.get("source_details", []),
-                "processing_time_seconds": round(time.time() - start_time, 2),
-            },
-        )
+    return ArticleChatJobCreateResponse(job_id=job_id, status="queued")
 
-        logger.info(
-            "Article chat request completed",
-            title=response.article.title,
-            content_length=len(response.article.body),
-            processing_time=response.metadata["processing_time_seconds"],
-        )
-        return response
-    except Exception as exc:
-        logger.error(
-            "Article chat request failed",
-            error=str(exc),
-            error_type=type(exc).__name__,
-            processing_time=round(time.time() - start_time, 2),
-        )
-        raise HTTPException(status_code=500, detail=f"Article chat failed: {str(exc)}")
+
+@router.get(
+    "/article-chat/jobs/{job_id}",
+    response_model=ArticleChatJobStatusResponse,
+    summary="Get article chat job status",
+    description="Return the status and completed result for an article chat job.",
+)
+async def get_article_chat_job(
+    job_id: str,
+    fastapi_request: Request,
+) -> ArticleChatJobStatusResponse:
+    """Return current status for an article chat job."""
+    jobs = getattr(fastapi_request.app.state, "article_chat_jobs", {})
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Article chat job not found")
+
+    result = None
+    if job.get("result"):
+        result = ArticleChatReplyResponse(**job["result"])
+
+    return ArticleChatJobStatusResponse(
+        job_id=job_id,
+        status=job["status"],
+        result=result,
+        error=job.get("error"),
+        metadata={
+            key: value
+            for key, value in job.items()
+            if key in {"submitted_at", "started_at", "completed_at"}
+        },
+    )
 
 
 # Legacy endpoint for backward compatibility
