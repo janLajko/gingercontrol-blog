@@ -77,6 +77,11 @@ def _prepare_blog_post_payload(
         normalized.get("author_avatar")
     )
     normalized["category"] = _normalize_optional_string(normalized.get("category"))
+    normalized["language"] = (
+        _normalize_optional_string(normalized.get("language"))
+        or (existing.language if existing is not None else None)
+        or "en"
+    ).lower()
     normalized["cover_image"] = _normalize_optional_string(
         normalized.get("cover_image")
     )
@@ -182,6 +187,7 @@ def list_blog_posts(
     status: Optional[str] = None,
     type: Optional[str] = None,
     title: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> List[BlogPost]:
     """Return all blog posts ordered by newest first."""
     session_local = get_session_local()
@@ -196,6 +202,7 @@ def list_blog_posts(
         normalized_status = (status or "").strip()
         normalized_type = (type or "").strip()
         normalized_title = (title or "").strip()
+        normalized_language = (language or "").strip().lower()
         if normalized_category:
             stmt = stmt.where(BlogPost.category == normalized_category)
         if normalized_status:
@@ -204,6 +211,8 @@ def list_blog_posts(
             stmt = stmt.where(BlogPost.type == normalized_type)
         if normalized_title:
             stmt = stmt.where(BlogPost.title.ilike(f"%{normalized_title}%"))
+        if normalized_language:
+            stmt = stmt.where(BlogPost.language == normalized_language)
         return list(session.execute(stmt).scalars().all())
     finally:
         session.close()
@@ -217,6 +226,7 @@ def list_blog_post_summaries(
     status: Optional[str] = None,
     type: Optional[str] = None,
     title: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return a paginated list of article summaries."""
     session_local = get_session_local()
@@ -236,6 +246,7 @@ def list_blog_post_summaries(
         normalized_status = (status or "").strip()
         normalized_type = (type or "").strip()
         normalized_title = (title or "").strip()
+        normalized_language = (language or "").strip().lower()
 
         count_stmt = select(func.count()).select_from(BlogPost)
         items_stmt = (
@@ -251,6 +262,7 @@ def list_blog_post_summaries(
                 BlogPost.author_name,
                 BlogPost.author_avatar,
                 BlogPost.category,
+                BlogPost.language,
                 BlogPost.type,
             )
             .order_by(BlogPost.created_at.desc(), BlogPost.id.desc())
@@ -270,6 +282,9 @@ def list_blog_post_summaries(
         if normalized_title:
             count_stmt = count_stmt.where(BlogPost.title.ilike(f"%{normalized_title}%"))
             items_stmt = items_stmt.where(BlogPost.title.ilike(f"%{normalized_title}%"))
+        if normalized_language:
+            count_stmt = count_stmt.where(BlogPost.language == normalized_language)
+            items_stmt = items_stmt.where(BlogPost.language == normalized_language)
 
         total_count = int(session.execute(count_stmt).scalar_one() or 0)
         total_pages = ceil(total_count / page_limit) if total_count > 0 else 0
@@ -288,6 +303,7 @@ def list_blog_post_summaries(
                 "author_name": row.author_name,
                 "author_avatar": row.author_avatar,
                 "category": row.category,
+                "language": row.language or "en",
                 "type": row.type,
             }
             for row in rows

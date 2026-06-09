@@ -207,6 +207,8 @@ async def generate_enhanced_blog(
     try:
         # Validate and prepare customization
         customization = request.customization or BlogCustomization()
+        generation_customization = customization.model_dump()
+        generation_customization["language"] = request.language or "en"
         
         # Get blog generation graph
         blog_graph = await get_blog_generation_graph()
@@ -214,7 +216,7 @@ async def generate_enhanced_blog(
         # Execute workflow with enhanced parameters
         result = await blog_graph.run_blog_generation(
             keyword=request.keyword.strip(),
-            customization=customization.model_dump(),
+            customization=generation_customization,
             max_attempts=request.max_attempts or 3,
             seo_threshold=request.seo_threshold or 75.0,
             thread_id=run_id,
@@ -278,7 +280,7 @@ async def generate_enhanced_blog(
             sources_used=result.get("sources_used", []),
             processing_time_seconds=round(processing_time, 2),
             model_used=result.get("model_used", "gpt-5-mini"),
-            content_language="en",
+            content_language=request.language or "en",
             # generated_at=datetime.utcnow()
         )
 
@@ -286,11 +288,12 @@ async def generate_enhanced_blog(
             author_name=request.author_name,
             author_avatar=request.author_avatar,
             category=request.category,
+            language=request.language or "en",
             cover_image=request.cover_image,
         )
 
         post_id = None
-        persisted_customization = customization.model_dump()
+        persisted_customization = dict(generation_customization)
         if product_cta is not None:
             persisted_customization["product_cta"] = product_cta
 
@@ -307,6 +310,7 @@ async def generate_enhanced_blog(
                     "author_name": request.author_name,
                     "author_avatar": request.author_avatar,
                     "category": request.category,
+                    "language": request.language or "en",
                     "cover_image": request.cover_image,
                     "user_id": request.user_id,
                     "customization": persisted_customization,
@@ -569,6 +573,10 @@ async def get_articles(
         default=None,
         description="Optional title filter. Performs a fuzzy match against article titles.",
     ),
+    language: str | None = Query(
+        default=None,
+        description="Optional language filter. Matches the article language code exactly.",
+    ),
     page: int | None = Query(
         default=None,
         ge=1,
@@ -583,7 +591,13 @@ async def get_articles(
 ):
     """List articles in legacy or paginated mode, optionally filtered by category and title."""
     if page is None and page_limit is None:
-        return list_blog_posts(category=category, status=status, type=type, title=title)
+        return list_blog_posts(
+            category=category,
+            status=status,
+            type=type,
+            title=title,
+            language=language,
+        )
 
     return list_blog_post_summaries(
         page=page or 1,
@@ -592,6 +606,7 @@ async def get_articles(
         status=status,
         type=type,
         title=title,
+        language=language,
     )
 
 

@@ -40,6 +40,7 @@ class BlogPost(Base):
     author_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     author_avatar: Mapped[str | None] = mapped_column(String(500), nullable=True)
     category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    language: Mapped[str] = mapped_column(String(16), default="en", index=True)
     cover_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     customization: Mapped[dict] = mapped_column(JSONType, default=dict)

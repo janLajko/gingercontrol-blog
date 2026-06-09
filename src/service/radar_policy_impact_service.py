@@ -47,36 +47,9 @@ def build_radar_policy_impacts(
 
     scope_headings_by_id = _build_scope_heading_index(impact_json)
 
-    for modification in _as_list(impact_json.get("hts_modifications")):
-        mod = _as_dict(modification)
-        for hts_number in _string_list(mod.get("deleted")):
-            if is_chapter_one_to_ninety_eight(hts_number):
-                rows.append(
-                    _make_impact(
-                        policy_update_id=policy_update_id,
-                        hts_number=hts_number,
-                        impacted_type="deleted",
-                        effective_time=default_effective_date,
-                        coos=None,
-                        row_desc=None,
-                    )
-                )
-
-        for hts_number in _string_list(mod.get("inserted")):
-            if is_chapter_one_to_ninety_eight(hts_number):
-                rows.append(
-                    _make_impact(
-                        policy_update_id=policy_update_id,
-                        hts_number=hts_number,
-                        impacted_type="inserted",
-                        effective_time=default_effective_date,
-                        coos=None,
-                        row_desc=None,
-                    )
-                )
-
     for measure_value in _as_list(impact_json.get("measures")):
         measure = _as_dict(measure_value)
+        one_line_summary = _optional_string(measure.get("one_line_summary"))
         heading = _first_string(
             measure.get("heading"),
             measure.get("hts_number"),
@@ -98,6 +71,7 @@ def build_radar_policy_impacts(
                         effective_time=effective_time,
                         coos=None,
                         row_desc=row_desc,
+                        one_line_summary=one_line_summary,
                     )
                 )
             continue
@@ -121,6 +95,7 @@ def build_radar_policy_impacts(
                         effective_time=effective_time,
                         coos=coos,
                         row_desc=row_desc,
+                        one_line_summary=one_line_summary,
                     )
                 )
 
@@ -156,6 +131,7 @@ def _make_impact(
     effective_time: str | None,
     coos: list[str] | None,
     row_desc: str | None,
+    one_line_summary: str | None,
 ) -> RadarPolicyImpact:
     return {
         "policy_update_id": policy_update_id,
@@ -164,6 +140,7 @@ def _make_impact(
         "effective_time": effective_time,
         "coos": coos,
         "row_desc": row_desc,
+        "one_line_summary": one_line_summary,
     }
 
 

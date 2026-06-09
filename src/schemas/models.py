@@ -124,6 +124,12 @@ class EnhancedBlogGenerationRequest(BaseModel):
         description="Article category"
     )
 
+    language: Optional[str] = Field(
+        default="en",
+        max_length=16,
+        description="Article language code, defaults to English",
+    )
+
     cover_image: Optional[str] = Field(
         default=None,
         alias="coverImage",
@@ -145,6 +151,14 @@ class EnhancedBlogGenerationRequest(BaseModel):
             raise ValueError("Keyword should not exceed 10 words")
             
         return v
+
+    @validator("language", pre=True, always=True)
+    def normalize_language(cls, v):
+        """Normalize optional content language code."""
+        if v is None:
+            return "en"
+        value = str(v).strip().lower()
+        return value or "en"
     
     @validator('callback_url')
     def validate_callback_url(cls, v):
@@ -281,6 +295,7 @@ class ArticleAuthorDetails(BaseModel):
     author_name: Optional[str] = Field(default=None, alias="authorName")
     author_avatar: Optional[str] = Field(default=None, alias="authorAvatar")
     category: Optional[str] = Field(default=None)
+    language: Optional[str] = Field(default="en")
     cover_image: Optional[str] = Field(default=None, alias="coverImage")
 
 
@@ -327,6 +342,7 @@ class ArticleBase(BaseModel):
     author_name: Optional[str] = Field(default=None, alias="authorName", max_length=120)
     author_avatar: Optional[str] = Field(default=None, alias="authorAvatar", max_length=500)
     category: Optional[str] = Field(default=None, max_length=255)
+    language: Optional[str] = Field(default="en", max_length=16)
     cover_image: Optional[str] = Field(default=None, alias="coverImage", max_length=500)
     user_id: Optional[str] = Field(default=None, max_length=100)
     status: Optional[str] = Field(default="draft", max_length=32)
@@ -352,6 +368,13 @@ class ArticleBase(BaseModel):
         if isinstance(v, str):
             return [part.strip() for part in v.split(",") if part.strip()]
         return v or []
+
+    @validator("language", pre=True, always=True)
+    def normalize_language(cls, v):
+        if v is None:
+            return "en"
+        value = str(v).strip().lower()
+        return value or "en"
 
 
 class ArticleCreate(ArticleBase):
@@ -389,6 +412,7 @@ class ArticleListItemResponse(BaseModel):
     author_name: Optional[str] = Field(default=None, description="Author display name")
     author_avatar: Optional[str] = Field(default=None, description="Author avatar URL")
     category: Optional[str] = Field(default=None, description="Article category")
+    language: Optional[str] = Field(default="en", description="Article language code")
     type: Optional[str] = Field(default="article", description="Content type: article or news")
 
 
