@@ -35,7 +35,7 @@ class APIKeyAuth:
         Raises:
             HTTPException: If API key is invalid or missing
         """
-        return True
+        # return True
         if not self.api_key:
             # If no API key is configured, allow access (development mode)
             logger.debug("No API key configured, allowing access")

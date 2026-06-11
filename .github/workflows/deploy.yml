@@ -90,7 +90,7 @@ jobs:
     - name: Cleanup old task definitions
       run: |
         OLD_TASK_DEFS=$(aws ecs list-task-definitions \
-          --family-prefix gingercontrol \
+          --family-prefix gingercontrol-blog-backend \
           --sort DESC \
           --query "taskDefinitionArns[1:]" \
           --output text)
