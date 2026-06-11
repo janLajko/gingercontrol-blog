@@ -53,6 +53,7 @@ from datetime import datetime
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["blog"])
+AUTH_DEPENDENCIES = [Depends(verify_api_key)]
 
 
 async def _execute_article_chat_request(
@@ -152,6 +153,7 @@ async def _run_article_chat_job(
     response_model=EnhancedBlogGenerationResponse,
     summary="Generate Enhanced SEO-optimized blog content",
     description="Generate a comprehensive, customizable blog post using AI agents with advanced options",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def generate_enhanced_blog(
     request: EnhancedBlogGenerationRequest,
@@ -440,6 +442,7 @@ async def send_webhook_notification(callback_url: str, response_data: dict, run_
         "Submit a background job to create a new article or revise the supplied "
         "article using the latest chat instruction."
     ),
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def article_chat_reply(
     request: ArticleChatReplyRequest,
@@ -486,6 +489,7 @@ async def article_chat_reply(
     response_model=ArticleChatJobStatusResponse,
     summary="Get article chat job status",
     description="Return the status and completed result for an article chat job.",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def get_article_chat_job(
     job_id: str,
@@ -630,6 +634,7 @@ async def get_article(article_id: int):
     status_code=201,
     summary="Create article",
     description="Create a new article record",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def create_article_endpoint(payload: ArticleCreate):
     """Create a new article from CMS input."""
@@ -645,6 +650,7 @@ async def create_article_endpoint(payload: ArticleCreate):
     response_model=ArticleResponse,
     summary="Update article",
     description="Update an existing article record",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def update_article_endpoint(article_id: int, payload: ArticleUpdate):
     """Update a persisted article."""
@@ -662,6 +668,7 @@ async def update_article_endpoint(article_id: int, payload: ArticleUpdate):
     "/articles/{article_id}",
     summary="Delete article",
     description="Delete an article by ID",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def delete_article_endpoint(article_id: int):
     """Delete an article."""
@@ -679,6 +686,7 @@ async def delete_article_endpoint(article_id: int):
     "/uploads/images",
     summary="Upload article image",
     description="Upload a CMS image to Google Cloud Storage and return its public URL",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def upload_article_image(file: UploadFile = File(...)):
     """Upload an image for CMS article cover/avatar usage."""
@@ -731,6 +739,7 @@ MAX_VIDEO_SIZE = 100 * 1024 * 1024   # 100 MB
     "/uploads/media",
     summary="Upload inline media (image or video)",
     description="Upload an image or video to GCS for embedding in article markdown body",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def upload_article_media(file: UploadFile = File(...)):
     """Upload an image or video for inline use in article markdown."""
@@ -800,6 +809,7 @@ async def upload_article_media(file: UploadFile = File(...)):
     response_model=list[CategoryResponse],
     summary="List categories",
     description="Return all categories ordered by name",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def get_categories():
     """List all categories."""
@@ -811,6 +821,7 @@ async def get_categories():
     response_model=CategoryResponse,
     summary="Get category",
     description="Return one category by ID",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def get_category(category_id: int):
     """Get a single category."""
@@ -826,6 +837,7 @@ async def get_category(category_id: int):
     status_code=201,
     summary="Create category",
     description="Create a new unique category",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def create_category_endpoint(payload: CategoryCreate):
     """Create a category."""
@@ -849,6 +861,7 @@ async def create_category_endpoint(payload: CategoryCreate):
     response_model=CategoryResponse,
     summary="Update category",
     description="Rename an existing category",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def update_category_endpoint(category_id: int, payload: CategoryUpdate):
     """Update a category."""
@@ -874,6 +887,7 @@ async def update_category_endpoint(category_id: int, payload: CategoryUpdate):
     "/categories/{category_id}",
     summary="Delete category",
     description="Delete a category by ID",
+    dependencies=AUTH_DEPENDENCIES,
 )
 async def delete_category_endpoint(category_id: int):
     """Delete a category."""

@@ -9,8 +9,9 @@ from src.config import settings
 
 logger = get_logger(__name__)
 
-# Security scheme
-security = HTTPBearer()
+# Security scheme. Let verify_api_key decide whether credentials are required,
+# so routes remain open when API_KEY is not configured.
+security = HTTPBearer(auto_error=False)
 
 class APIKeyAuth:
     """API Key authentication handler."""

@@ -4,11 +4,44 @@
 
 | 方法 | 路径 | 函数 | 说明 |
 |---|---|---|---|
-| `GET` | `/api/v1/articles` | `get_articles` | 查询文章列表，支持筛选和分页。 |
-| `GET` | `/api/v1/articles/{article_id}` | `get_article` | 查询单篇文章详情。 |
-| `POST` | `/api/v1/articles` | `create_article_endpoint` | 创建文章。 |
-| `PUT` | `/api/v1/articles/{article_id}` | `update_article_endpoint` | 更新文章。 |
-| `DELETE` | `/api/v1/articles/{article_id}` | `delete_article_endpoint` | 删除文章。 |
+| `GET` | `/api/v1/articles` | `get_articles` | 查询文章列表，支持筛选和分页；不需要 API Key。 |
+| `GET` | `/api/v1/articles/{article_id}` | `get_article` | 查询单篇文章详情；不需要 API Key。 |
+| `POST` | `/api/v1/articles` | `create_article_endpoint` | 创建文章；需要 API Key。 |
+| `PUT` | `/api/v1/articles/{article_id}` | `update_article_endpoint` | 更新文章；需要 API Key。 |
+| `DELETE` | `/api/v1/articles/{article_id}` | `delete_article_endpoint` | 删除文章；需要 API Key。 |
+
+## API Key 认证
+
+如果后端配置了环境变量 `API_KEY`，写入类文章接口需要在请求头中携带 Bearer Token：
+
+```http
+Authorization: Bearer <API_KEY>
+```
+
+不需要 API Key 的接口：
+
+- `GET /api/v1/articles`
+- `GET /api/v1/articles/{article_id}`
+
+需要 API Key 的接口：
+
+- `POST /api/v1/articles`
+- `PUT /api/v1/articles/{article_id}`
+- `DELETE /api/v1/articles/{article_id}`
+
+Postman 配置方式：
+
+- 在 `Authorization` tab 中选择 `Bearer Token`。
+- `Token` 填写后端配置的 `API_KEY` 值。
+- 或者直接在 `Headers` 中添加 `Authorization: Bearer <API_KEY>`。
+
+示例：
+
+```http
+Authorization: Bearer your-api-key
+```
+
+如果通过 Next.js 前端代理访问 `/api/cms/...`，前端服务端会读取 `FASTAPI_API_KEY` 并自动转发为上述 `Authorization` header。
 
 ## 创建文章
 
@@ -17,6 +50,7 @@
 ```http
 POST /api/v1/articles
 Content-Type: application/json
+Authorization: Bearer <API_KEY>
 ```
 
 处理函数：
@@ -416,6 +450,7 @@ GET /api/v1/articles/123
 ```http
 PUT /api/v1/articles/{article_id}
 Content-Type: application/json
+Authorization: Bearer <API_KEY>
 ```
 
 处理函数：

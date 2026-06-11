@@ -264,10 +264,10 @@ def create_app() -> FastAPI:
             return app.state.usage_stats
         return {"message": "No statistics available"}
 
-    # Include routers with API key dependency
-    # app.include_router(blog_router, dependencies=[Depends(verify_api_key)])
+    # Include routers with API key dependency.
+    # Blog routes attach auth per-endpoint so public article reads can stay open.
     if os.getenv("API_KEY"):
-        app.include_router(blog_router, dependencies=[Depends(verify_api_key)])
+        app.include_router(blog_router)
         app.include_router(billing_admin_router, dependencies=[Depends(verify_api_key)])
         app.include_router(
             billing_user_admin_router,
