@@ -16,12 +16,15 @@ from src.api.routes.billing_admin import router as billing_admin_router
 from src.api.routes.billing_user_admin import router as billing_user_admin_router
 from src.api.routes.invitation_code import router as invitation_code_router
 from src.api.routes.radar_policy import router as radar_policy_router
+from src.api.routes.user_manage import router as user_manage_router
 from src.api.middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from src.api.auth import verify_api_key
 from src.db.invitation_code_connection import close_pool as close_invitation_code_pool
 from src.db.invitation_code_connection import open_pool as open_invitation_code_pool
 from src.db.connection import close_pool as close_radar_policy_pool
 from src.db.connection import open_pool as open_radar_policy_pool
+from src.db.user_manage_connection import close_pool as close_user_manage_pool
+from src.db.user_manage_connection import open_pool as open_user_manage_pool
 from src.db.service import init_db
 from src.utils.logger import configure_logging, get_logger
 from src.schemas.models import ErrorDetail
@@ -81,6 +84,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error("Failed to open invitation code database pool", error=str(e))
 
+    try:
+        open_user_manage_pool()
+        logger.info("User management database pool opened")
+    except Exception as e:
+        logger.error("Failed to open user management database pool", error=str(e))
+
     # Pre-compile the blog generation graph
     try:
         from src.agents.graph import get_blog_generation_graph
@@ -110,6 +119,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down Enhanced Gemini Blog Agent service")
+    close_user_manage_pool()
     close_invitation_code_pool()
     close_radar_policy_pool()
     
@@ -278,12 +288,14 @@ def create_app() -> FastAPI:
             dependencies=[Depends(verify_api_key)],
         )
         app.include_router(radar_policy_router, dependencies=[Depends(verify_api_key)])
+        app.include_router(user_manage_router, dependencies=[Depends(verify_api_key)])
     else:
         app.include_router(blog_router)
         app.include_router(billing_admin_router)
         app.include_router(billing_user_admin_router)
         app.include_router(invitation_code_router)
         app.include_router(radar_policy_router)
+        app.include_router(user_manage_router)
 
     logger.info(
         "Enhanced FastAPI application created",
