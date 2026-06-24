@@ -28,7 +28,11 @@ from src.schemas.models import (
 )
 from src.api.auth import verify_api_key
 from src.agents.graph import get_blog_generation_graph
-from src.config.settings import GCS_CMS_IMAGE_PREFIX, GCS_CMS_MEDIA_PREFIX
+from src.config.settings import (
+    BLOG_REVALIDATE_WEBHOOK_URL,
+    GCS_CMS_IMAGE_PREFIX,
+    GCS_CMS_MEDIA_PREFIX,
+)
 from src.tools.openai_blog_client import get_openai_blog_client
 from src.db.service import (
     save_blog_post,
@@ -54,6 +58,80 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["blog"])
 AUTH_DEPENDENCIES = [Depends(verify_api_key)]
+PUBLISHED_STATUS = "published"
+
+
+def _is_published_status(value: Any) -> bool:
+    """Return whether a persisted status should invalidate public article pages."""
+    return str(value or "").strip().lower() == PUBLISHED_STATUS
+
+
+def _schedule_article_revalidate(
+    background_tasks: BackgroundTasks,
+    *,
+    operation: str,
+    article: Any,
+) -> None:
+    """Schedule public site revalidation for published article mutations."""
+    if not BLOG_REVALIDATE_WEBHOOK_URL:
+        logger.debug(
+            "Skipping article revalidate webhook because URL is not configured",
+            operation=operation,
+            article_id=getattr(article, "id", None),
+        )
+        return
+
+    background_tasks.add_task(
+        send_article_revalidate_webhook,
+        operation=operation,
+        article_id=getattr(article, "id", None),
+        article_slug=getattr(article, "slug", None),
+        article_status=getattr(article, "status", None),
+    )
+
+
+async def send_article_revalidate_webhook(
+    *,
+    operation: str,
+    article_id: int | None,
+    article_slug: str | None,
+    article_status: str | None,
+) -> None:
+    """Call the GingerControl public-site revalidation webhook."""
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                BLOG_REVALIDATE_WEBHOOK_URL,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if 200 <= resp.status < 300:
+                    logger.info(
+                        "Article revalidate webhook sent successfully",
+                        operation=operation,
+                        article_id=article_id,
+                        article_slug=article_slug,
+                        article_status=article_status,
+                    )
+                else:
+                    logger.warning(
+                        "Article revalidate webhook failed",
+                        operation=operation,
+                        article_id=article_id,
+                        article_slug=article_slug,
+                        article_status=article_status,
+                        status=resp.status,
+                    )
+    except Exception as exc:
+        logger.error(
+            "Failed to send article revalidate webhook",
+            operation=operation,
+            article_id=article_id,
+            article_slug=article_slug,
+            article_status=article_status,
+            error=str(exc),
+        )
 
 
 async def _execute_article_chat_request(
@@ -636,10 +714,19 @@ async def get_article(article_id: int):
     description="Create a new article record",
     dependencies=AUTH_DEPENDENCIES,
 )
-async def create_article_endpoint(payload: ArticleCreate):
+async def create_article_endpoint(
+    payload: ArticleCreate,
+    background_tasks: BackgroundTasks,
+):
     """Create a new article from CMS input."""
     try:
         article = create_blog_post(payload.model_dump())
+        if _is_published_status(article.status):
+            _schedule_article_revalidate(
+                background_tasks,
+                operation="create",
+                article=article,
+            )
         return article
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -652,15 +739,28 @@ async def create_article_endpoint(payload: ArticleCreate):
     description="Update an existing article record",
     dependencies=AUTH_DEPENDENCIES,
 )
-async def update_article_endpoint(article_id: int, payload: ArticleUpdate):
+async def update_article_endpoint(
+    article_id: int,
+    payload: ArticleUpdate,
+    background_tasks: BackgroundTasks,
+):
     """Update a persisted article."""
     try:
+        previous_article = get_blog_post(article_id)
         article = update_blog_post(article_id, payload.model_dump())
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
+    if _is_published_status(getattr(previous_article, "status", None)) or (
+        _is_published_status(article.status)
+    ):
+        _schedule_article_revalidate(
+            background_tasks,
+            operation="update",
+            article=article,
+        )
     return article
 
 
@@ -670,15 +770,25 @@ async def update_article_endpoint(article_id: int, payload: ArticleUpdate):
     description="Delete an article by ID",
     dependencies=AUTH_DEPENDENCIES,
 )
-async def delete_article_endpoint(article_id: int):
+async def delete_article_endpoint(
+    article_id: int,
+    background_tasks: BackgroundTasks,
+):
     """Delete an article."""
     try:
+        article = get_blog_post(article_id)
         deleted = delete_blog_post(article_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Article not found")
+    if _is_published_status(getattr(article, "status", None)):
+        _schedule_article_revalidate(
+            background_tasks,
+            operation="delete",
+            article=article,
+        )
     return {"success": True, "id": article_id}
 
 

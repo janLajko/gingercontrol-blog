@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
+from src.api.auth import api_key_auth
 from src.api.app import create_app
 from src.config import settings
 from src.schemas.state import GraphState
@@ -129,3 +130,5 @@ def mock_env_vars(monkeypatch):
     monkeypatch.setenv("TRUSTED_HOSTS", "testserver,localhost,127.0.0.1")
     monkeypatch.setenv("API_KEY", "")
     monkeypatch.setattr(settings, "DATABASE_URL", None)
+    monkeypatch.setattr(settings, "API_KEY", None)
+    monkeypatch.setattr(api_key_auth, "api_key", None)

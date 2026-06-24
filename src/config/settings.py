@@ -54,6 +54,10 @@ OPENAPI_KEY_ENCRYPTION_KEY = os.getenv("OPENAPI_KEY_ENCRYPTION_KEY")
 OPENAPI_KEY_SECRET_VERSION = os.getenv("OPENAPI_KEY_SECRET_VERSION", "v1")
 GCS_CMS_IMAGE_PREFIX = os.getenv("GCS_CMS_IMAGE_PREFIX", "blog-covers/")
 GCS_CMS_MEDIA_PREFIX = os.getenv("GCS_CMS_MEDIA_PREFIX", "blog-media/")
+BLOG_REVALIDATE_WEBHOOK_URL = os.getenv(
+    "BLOG_REVALIDATE_WEBHOOK_URL",
+    "https://gingercontrol.com/api/revalidate?secret=5b18b444ed72c63fda7ce5e368ac2789c6661abfbc284b6a3e6a8de1c0f4969b",
+)
 
 # Debug print
 print(f"Config loaded - google api key set: {bool(GOOGLE_API_KEY)}, ")

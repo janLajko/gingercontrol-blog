@@ -1,5 +1,7 @@
 """Test cases for FastAPI endpoints."""
 
+from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -146,6 +148,116 @@ class TestBlogGenerationEndpoint:
             )
 
         assert response.status_code == 200
+
+
+def make_article_record(article_id: int = 1, status: str = "draft"):
+    return SimpleNamespace(
+        id=article_id,
+        run_id="manual-test",
+        keyword="test article",
+        slug="test-article",
+        title="Test Article",
+        description="Test article description.",
+        tags=[],
+        body="Test article body.",
+        author_name=None,
+        author_avatar=None,
+        category=None,
+        language="en",
+        cover_image=None,
+        user_id=None,
+        status=status,
+        success=True,
+        sources_used=[],
+        source_details=[],
+        seo_scores={},
+        final_score=0.0,
+        model_used=None,
+        customization={},
+        type="article",
+        error_message=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+
+def make_article_payload(status: str = "draft"):
+    return {
+        "slug": "test-article",
+        "title": "Test Article",
+        "description": "Test article description.",
+        "tags": [],
+        "body": "Test article body.",
+        "status": status,
+    }
+
+
+class TestArticleRevalidateWebhook:
+    def test_create_published_article_schedules_revalidate(self, client: TestClient):
+        article = make_article_record(status="published")
+
+        with (
+            patch("src.api.routes.blog.create_blog_post", return_value=article),
+            patch("src.api.routes.blog._schedule_article_revalidate") as schedule,
+        ):
+            response = client.post(
+                "/api/v1/articles",
+                json=make_article_payload(status="published"),
+            )
+
+        assert response.status_code == 201
+        schedule.assert_called_once()
+        assert schedule.call_args.kwargs["operation"] == "create"
+        assert schedule.call_args.kwargs["article"] is article
+
+    def test_create_draft_article_skips_revalidate(self, client: TestClient):
+        article = make_article_record(status="draft")
+
+        with (
+            patch("src.api.routes.blog.create_blog_post", return_value=article),
+            patch("src.api.routes.blog._schedule_article_revalidate") as schedule,
+        ):
+            response = client.post(
+                "/api/v1/articles",
+                json=make_article_payload(status="draft"),
+            )
+
+        assert response.status_code == 201
+        schedule.assert_not_called()
+
+    def test_update_published_article_schedules_revalidate(self, client: TestClient):
+        previous_article = make_article_record(status="published")
+        updated_article = make_article_record(status="draft")
+
+        with (
+            patch("src.api.routes.blog.get_blog_post", return_value=previous_article),
+            patch("src.api.routes.blog.update_blog_post", return_value=updated_article),
+            patch("src.api.routes.blog._schedule_article_revalidate") as schedule,
+        ):
+            response = client.put(
+                "/api/v1/articles/1",
+                json=make_article_payload(status="draft"),
+            )
+
+        assert response.status_code == 200
+        schedule.assert_called_once()
+        assert schedule.call_args.kwargs["operation"] == "update"
+        assert schedule.call_args.kwargs["article"] is updated_article
+
+    def test_delete_published_article_schedules_revalidate(self, client: TestClient):
+        article = make_article_record(status="published")
+
+        with (
+            patch("src.api.routes.blog.get_blog_post", return_value=article),
+            patch("src.api.routes.blog.delete_blog_post", return_value=True),
+            patch("src.api.routes.blog._schedule_article_revalidate") as schedule,
+        ):
+            response = client.delete("/api/v1/articles/1")
+
+        assert response.status_code == 200
+        schedule.assert_called_once()
+        assert schedule.call_args.kwargs["operation"] == "delete"
+        assert schedule.call_args.kwargs["article"] is article
 
 
 class TestErrorHandling:
