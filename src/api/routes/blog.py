@@ -102,7 +102,7 @@ async def send_article_revalidate_webhook(
         import aiohttp
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(
+            async with session.post(
                 BLOG_REVALIDATE_WEBHOOK_URL,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
