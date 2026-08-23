@@ -14,7 +14,7 @@ class InvitationCodeSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-InvitationCodeType = Literal["radar", "register", "sandbox"]
+InvitationCodeType = Literal["radar", "register", "sandbox", "credits"]
 InvitationCodeStatus = Literal["active", "disabled", "expired", "exhausted"]
 
 
@@ -32,6 +32,7 @@ class InvitationCode(InvitationCodeSchema):
     valid_until: datetime | None = None
     status: InvitationCodeStatus
     note: str | None = None
+    credits: int | None = None
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -80,6 +81,11 @@ class InvitationCodeCreateRequest(InvitationCodeSchema):
     valid_until: datetime | None = None
     status: InvitationCodeStatus = "active"
     note: str | None = None
+    credits: int | None = Field(
+        default=None,
+        gt=0,
+        description="Credits granted on redemption. Omit for no credits.",
+    )
     created_by: str | None = Field(default=None, max_length=128)
 
     @model_validator(mode="after")
@@ -109,6 +115,7 @@ class InvitationCodePatchRequest(InvitationCodeSchema):
     valid_until: datetime | None = None
     status: InvitationCodeStatus | None = None
     note: str | None = None
+    credits: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validate_valid_range(self) -> "InvitationCodePatchRequest":

@@ -128,7 +128,7 @@ class BillingPurchaseRecord(Base):
     __tablename__ = "billing_purchase"
     __table_args__ = (
         CheckConstraint(
-            "purchase_type in ('subscription', 'one_time')",
+            "purchase_type in ('subscription', 'one_time', 'one_time_ginger')",
             name="ck_billing_purchase_type",
         ),
         CheckConstraint(
@@ -166,6 +166,8 @@ class BillingPurchaseRecord(Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     raw_payload: Mapped[dict] = mapped_column(JSONType, default=dict)
+    amount_total: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -216,6 +218,15 @@ class BillingEntitlementGrantRecord(Base):
             "remaining_quantity is null or remaining_quantity >= 0",
             name="ck_billing_entitlement_grant_remaining_nonnegative",
         ),
+        CheckConstraint(
+            "grant_kind in ('feature', 'credits')",
+            name="ck_billing_entitlement_grant_kind",
+        ),
+        CheckConstraint(
+            "reserved_quantity >= 0 and "
+            "(remaining_quantity is null or reserved_quantity <= remaining_quantity)",
+            name="ck_billing_entitlement_grant_reserved",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -228,8 +239,13 @@ class BillingEntitlementGrantRecord(Base):
     subject_id: Mapped[int] = mapped_column(BigInteger, index=True)
     feature_key: Mapped[str] = mapped_column(String(128), index=True)
     grant_mode: Mapped[str] = mapped_column(String(32))
+    # 'credits' for the credits wallet, 'feature' for per-feature entitlements.
+    grant_kind: Mapped[str] = mapped_column(String(32), default="feature", index=True)
     granted_quantity: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     remaining_quantity: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reserved_quantity: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Set only for refresh='per_period' grants, to dedupe per subscription period.
+    period_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", index=True)

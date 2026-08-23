@@ -195,11 +195,9 @@ class BillingAdminUserBillingApiClient:
                 subject_type="user",
                 subject_id=user.id,
                 product_code=product.product_code,
-                purchase_type=(
-                    "subscription"
-                    if product.product_type == "subscription"
-                    else "one_time"
-                ),
+                # Manual purchases never go through Stripe, so they carry their
+                # own type regardless of whether the product is a subscription.
+                purchase_type="one_time_ginger",
                 stripe_checkout_session_id=None,
                 stripe_subscription_id=None,
                 stripe_price_id=product.stripe_price_id,
@@ -235,8 +233,11 @@ class BillingAdminUserBillingApiClient:
                         subject_id=user.id,
                         feature_key=grant.feature_key,
                         grant_mode=grant.grant_mode,
+                        grant_kind=_resolve_grant_kind(grant.feature_key),
                         granted_quantity=granted_quantity,
                         remaining_quantity=granted_quantity,
+                        reserved_quantity=0,
+                        period_key=None,
                         starts_at=grant.starts_at,
                         ends_at=grant.ends_at,
                         status=_resolve_grant_status(
@@ -472,8 +473,10 @@ def _to_grant_snapshot(grant: BillingEntitlementGrantRecord) -> BillingGrantSnap
         purchase_id=grant.purchase_id,
         feature_key=grant.feature_key,
         grant_mode=grant.grant_mode,
+        grant_kind=grant.grant_kind,
         granted_quantity=grant.granted_quantity,
         remaining_quantity=grant.remaining_quantity,
+        reserved_quantity=grant.reserved_quantity,
         starts_at=_to_optional_rfc3339(grant.starts_at),
         ends_at=_to_optional_rfc3339(grant.ends_at),
         status=grant.status,
@@ -525,10 +528,22 @@ def _build_balance_summary(
     ]
 
 
+CREDITS_FEATURE_KEY = "credits.balance"
+
+
+def _resolve_grant_kind(feature_key: str) -> str:
+    """Credits land in the wallet; everything else is a per-feature entitlement."""
+    return "credits" if feature_key == CREDITS_FEATURE_KEY else "feature"
+
+
 def _grant_config_dict(grant) -> dict[str, Any]:
     payload = {
         "feature_key": grant.feature_key,
         "grant_mode": grant.grant_mode,
+        "grant_kind": _resolve_grant_kind(grant.feature_key),
+        # Manual grants are one-off: an admin issuing them again is an explicit
+        # act, never something a subscription period should replay.
+        "refresh": "once",
     }
     if grant.quantity is not None:
         payload["credits"] = grant.quantity

@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    model_validator,
+)
 
 
 class BillingAdminSchema(BaseModel):
@@ -14,7 +22,7 @@ class BillingAdminSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-BillingProductFamily = Literal["simulate", "classification", "system"]
+BillingProductFamily = Literal["simulate", "classification", "system", "credits"]
 BillingProductType = Literal["subscription", "credit_pack"]
 BillingGrantMode = Literal["unlimited", "prepaid_quota"]
 BillingFeatureControlMode = Literal["free", "grant_required", "blocked"]
@@ -25,6 +33,8 @@ BillingPurchaseStatus = Literal[
     "pending", "active", "expired", "canceled", "consumed", "failed"
 ]
 BillingGrantStatus = Literal["active", "expired", "consumed", "canceled"]
+BillingGrantKind = Literal["feature", "credits"]
+BillingGrantRefresh = Literal["once", "per_period"]
 OpenApiClientStatus = Literal["active", "disabled"]
 OpenApiKeyStatus = Literal["active", "revoked"]
 OpenApiKeyScope = Literal["test", "live"]
@@ -56,16 +66,62 @@ class BillingProductConfigUnlimited(BillingAdminSchema):
 
 
 class BillingProductConfigPrepaidQuota(BillingAdminSchema):
-    """Config for prepaid quota grant mode."""
+    """Config for prepaid quota grant mode with a fixed credits amount."""
 
     feature_key: str = Field(..., min_length=1, max_length=128)
     grant_mode: Literal["prepaid_quota"]
     credits: int = Field(..., gt=0)
 
 
+class BillingProductConfigPrepaidQuotaCustomAmount(BillingAdminSchema):
+    """Config for prepaid quota granted from a customer-chosen payment amount.
+
+    The customer picks how much to pay; credits are derived from that amount
+    instead of being a fixed number baked into the product.
+    """
+
+    feature_key: str = Field(..., min_length=1, max_length=128)
+    grant_mode: Literal["prepaid_quota"]
+    credits_per_currency_unit: int = Field(..., gt=0)
+    min_amount_cents: int = Field(..., gt=0)
+    max_amount_cents: int = Field(..., gt=0)
+
+    @model_validator(mode="after")
+    def _validate_amount_range(self) -> "BillingProductConfigPrepaidQuotaCustomAmount":
+        if self.min_amount_cents > self.max_amount_cents:
+            raise ValueError(
+                "min_amount_cents must be less than or equal to max_amount_cents"
+            )
+        return self
+
+
+def _config_entry_kind(value: Any) -> str:
+    """Pick the config entry variant.
+
+    `grant_mode` alone cannot discriminate here: both prepaid variants carry
+    `grant_mode="prepaid_quota"`. The presence of `credits_per_currency_unit`
+    is what marks the custom-amount variant.
+    """
+    if isinstance(value, dict):
+        grant_mode = value.get("grant_mode")
+        has_rate = value.get("credits_per_currency_unit") is not None
+    else:
+        grant_mode = getattr(value, "grant_mode", None)
+        has_rate = getattr(value, "credits_per_currency_unit", None) is not None
+
+    if grant_mode == "unlimited":
+        return "unlimited"
+    return "prepaid_quota_custom_amount" if has_rate else "prepaid_quota"
+
+
 BillingProductConfigEntry = Annotated[
-    BillingProductConfigUnlimited | BillingProductConfigPrepaidQuota,
-    Field(discriminator="grant_mode"),
+    Annotated[BillingProductConfigUnlimited, Tag("unlimited")]
+    | Annotated[BillingProductConfigPrepaidQuota, Tag("prepaid_quota")]
+    | Annotated[
+        BillingProductConfigPrepaidQuotaCustomAmount,
+        Tag("prepaid_quota_custom_amount"),
+    ],
+    Discriminator(_config_entry_kind),
 ]
 
 
@@ -106,11 +162,18 @@ class BillingProduct(BillingAdminSchema):
 
 
 class GrantPreview(BillingAdminSchema):
-    """GrantPreview response model."""
+    """GrantPreview response model.
+
+    `granted_quantity` is set for fixed grants. Custom-amount grants leave it
+    empty and describe the conversion rate and accepted range instead.
+    """
 
     feature_key: str
     grant_mode: BillingGrantMode
     granted_quantity: int | None
+    credits_per_currency_unit: int | None = None
+    min_amount_cents: int | None = None
+    max_amount_cents: int | None = None
 
 
 class StripeCatalogInfo(BillingAdminSchema):
@@ -374,8 +437,10 @@ class BillingGrantSnapshot(BillingAdminSchema):
     purchase_id: int
     feature_key: str
     grant_mode: BillingGrantMode
+    grant_kind: BillingGrantKind = "feature"
     granted_quantity: int | None = None
     remaining_quantity: int | None = None
+    reserved_quantity: int = 0
     starts_at: str | None = None
     ends_at: str | None = None
     status: BillingGrantStatus

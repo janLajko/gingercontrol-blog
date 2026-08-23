@@ -17,13 +17,16 @@ CREATE TABLE IF NOT EXISTS invitation_codes (
     status VARCHAR(32) NOT NULL DEFAULT 'active',
     note TEXT NULL,
 
+    -- 兑换该邀请码可获得的 credits；NULL 表示不赠送
+    credits INTEGER NULL,
+
     created_by VARCHAR(128) NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     disabled_at TIMESTAMPTZ NULL,
 
     CONSTRAINT invitation_codes_code_type_check
-        CHECK (code_type IN ('radar', 'register', 'sandbox')),
+        CHECK (code_type IN ('radar', 'register', 'sandbox', 'credits')),
 
     CONSTRAINT invitation_codes_status_check
         CHECK (status IN ('active', 'disabled', 'expired', 'exhausted')),
@@ -33,6 +36,9 @@ CREATE TABLE IF NOT EXISTS invitation_codes (
 
     CONSTRAINT invitation_codes_max_uses_check
         CHECK (max_uses > 0),
+
+    CONSTRAINT invitation_codes_credits_check
+        CHECK (credits IS NULL OR credits > 0),
 
     CONSTRAINT invitation_codes_used_count_check
         CHECK (used_count >= 0 AND used_count <= max_uses),

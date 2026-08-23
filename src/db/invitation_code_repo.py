@@ -77,6 +77,7 @@ def list_invitation_codes(
                     valid_until,
                     status,
                     note,
+                    credits,
                     created_by,
                     created_at,
                     updated_at,
@@ -116,6 +117,7 @@ def get_invitation_code(invitation_code_id: int) -> dict[str, Any]:
                     valid_until,
                     status,
                     note,
+                    credits,
                     created_by,
                     created_at,
                     updated_at,
@@ -162,10 +164,12 @@ def create_invitation_code(payload: InvitationCodeCreateRequest) -> dict[str, An
                     valid_until,
                     status,
                     note,
+                    credits,
                     created_by,
                     disabled_at
                 )
                 VALUES (
+                    %s,
                     %s,
                     %s,
                     %s,
@@ -190,6 +194,7 @@ def create_invitation_code(payload: InvitationCodeCreateRequest) -> dict[str, An
                     payload.valid_until,
                     payload.status,
                     payload.note,
+                    payload.credits,
                     payload.created_by,
                     payload.status,
                 ),
@@ -241,6 +246,7 @@ def patch_invitation_code(
                 "valid_until",
                 "status",
                 "note",
+                "credits",
             ):
                 if field in updates:
                     set_parts.append(f"{field} = %s")

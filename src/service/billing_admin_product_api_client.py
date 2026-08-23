@@ -658,6 +658,13 @@ class BillingAdminProductApiClient:
             }
             if metadata.get("credits") not in (None, ""):
                 fallback_item["credits"] = _normalize_optional_int(metadata.get("credits"))
+            for key in (
+                "credits_per_currency_unit",
+                "min_amount_cents",
+                "max_amount_cents",
+            ):
+                if metadata.get(key) not in (None, ""):
+                    fallback_item[key] = _normalize_optional_int(metadata.get(key))
             normalized = [fallback_item]
 
         if len(normalized) == 0:
@@ -899,6 +906,11 @@ def _grant_preview_from_config(
                 feature_key=str(item.get("feature_key") or ""),
                 grant_mode=str(item.get("grant_mode") or ""),
                 granted_quantity=_normalize_optional_int(item.get("credits")),
+                credits_per_currency_unit=_normalize_optional_int(
+                    item.get("credits_per_currency_unit")
+                ),
+                min_amount_cents=_normalize_optional_int(item.get("min_amount_cents")),
+                max_amount_cents=_normalize_optional_int(item.get("max_amount_cents")),
             )
         )
     return previews
@@ -939,6 +951,16 @@ def _stripe_price_metadata(
             if entry.get("credits") is None
             else str(_normalize_optional_int(entry.get("credits")))
         )
+        for key in (
+            "credits_per_currency_unit",
+            "min_amount_cents",
+            "max_amount_cents",
+        ):
+            metadata[key] = (
+                None
+                if entry.get(key) is None
+                else str(_normalize_optional_int(entry.get(key)))
+            )
 
     return metadata
 
